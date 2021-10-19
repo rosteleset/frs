@@ -1,0 +1,9 @@
+/*
+!.gitignore
+!CMakeLists.txt
+!readme.md
+!*.cpp
+!*.h
+!mysql/
+!opt/
+!apidoc/

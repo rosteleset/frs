@@ -1,0 +1,26 @@
+{
+  "name": "Face Recognition System API",
+  "version": "1.0.0",
+  "title": "Face Recognition System API",
+  "sampleUrl": null,
+  "order": [
+    "Host-->FRS",
+    "addStream",
+    "listStreams",
+    "removeStream",
+    "motionDetection",
+    "bestQuality",
+    "getEvents",
+    "registerFace",
+    "addFaces",
+    "removeFaces",
+    "deleteFaces",
+    "listAllFaces",
+    "FRS-->Host",
+    "faceRecognized"
+  ],
+  "header": {
+    "title": "Общая информация",
+    "filename": "header.md"
+  }
+}

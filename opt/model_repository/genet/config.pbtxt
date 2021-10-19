@@ -1,0 +1,20 @@
+name: "genet"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "input.1"
+    data_type: TYPE_FP32
+    format: FORMAT_NCHW
+    dims: [ 3, 192, 192 ]
+  }
+]
+output [
+  {
+    name: "419"
+    data_type: TYPE_FP32
+    dims: [ 3 ]
+  }
+]
+
+instance_group [ { count: 1 }]

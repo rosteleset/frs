@@ -1,0 +1,20 @@
+name: "arcface"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "input.1"
+    data_type: TYPE_FP32
+    format: FORMAT_NCHW
+    dims: [ 3, 112, 112 ]
+  }
+]
+output [
+  {
+    name: "683"
+    data_type: TYPE_FP32
+    dims: [ 512 ]
+  }
+]
+
+instance_group [ { count: 4 }]
