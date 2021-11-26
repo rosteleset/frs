@@ -10,7 +10,7 @@ bool ApiResource::checkInputParam(const Wt::Json::Object& json, Wt::Http::Respon
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
     json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = qUtf8Printable(QString("Отсутствует параметр \"%1\" в запросе.").arg(input_param));
+    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_MISSING_PARAMETER.arg(input_param));
     response.setStatus(code);
     response.out() << Wt::Json::serialize(json_error, API::INDENT);
     return false;
@@ -30,7 +30,7 @@ bool ApiResource::checkInputParam(const Wt::Json::Object& json, Wt::Http::Respon
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
     json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = qUtf8Printable(QString("Пустое значение у параметра \"%1\" в запросе.").arg(input_param));
+    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_EMPTY_VALUE.arg(input_param));
     response.setStatus(code);
     response.out() << Wt::Json::serialize(json_error, API::INDENT);
     return false;
@@ -75,7 +75,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
         QByteArray face_data;
         std::vector<uchar> buff_;
         cv::imencode(".jpg", rd->face_image, buff_);
-        face_data = QByteArray((char*)buff_.data(), buff_.size());
+        face_data = QByteArray((char*)buff_.data(), int(buff_.size()));
         QString mime_type = "image/jpeg";
         Wt::Json::Object json_data;
         json_data[API::P_FACE_ID] = rd->id_descriptor;
@@ -122,14 +122,14 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
     json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = "Ошибка в структуре запроса.";
+    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_REQUEST_STRUCTURE);
     response.setStatus(code);
     response.out() << Wt::Json::serialize(json_error, API::INDENT);
     return;
   }
 
   //обработка запросов
-  if (api_function.contains(API::ADD_STREAM))
+  if (api_function == API::ADD_STREAM.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -137,11 +137,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
     QString url = QString::fromStdString(json.get(API::P_URL).toString().orIfNull(""));
     QString callback_url = QString::fromStdString(json.get(API::P_CALLBACK_URL).toString().orIfNull(""));
-
-    /*cout << "__API call addStream: streamId = " << vstream_ext.toStdString()
-         << "; url = " << url.toStdString()
-         << "; callback = " << callback_url.toStdString() << endl;*/
-    singleton.addLog(QString("API call addStream: streamId = %1;  url = %2;  callback = %3").arg(vstream_ext, url, callback_url));
+    singleton.addLog(API::LOG_CALL_ADD_STREAM.arg(API::ADD_STREAM, vstream_ext, url, callback_url));
 
     std::vector<int> face_ids;
     if (!json.get(API::P_FACE_IDS).isNull() && json.get(API::P_FACE_IDS).type() != Wt::Json::Type::Array)
@@ -215,7 +211,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::MOTION_DETECTION))
+  if (api_function == API::MOTION_DETECTION.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -225,10 +221,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
 
     QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
     bool is_start = (QString::fromStdString(json.get(API::P_START).toString().orIfNull("")) == "t");
-
-    /*cout << "__API call motionDetection: streamId = " << vstream_ext.toStdString()
-         << "; isStart = " << is_start << endl;*/
-    singleton.addLog(QString("API call motionDetection: streamId = %1;  isStart = %2").arg(vstream_ext).arg(is_start));
+    singleton.addLog(API::LOG_CALL_MOTION_DETECTION.arg(API::MOTION_DETECTION, vstream_ext).arg(is_start));
 
     motionDetection(vstream_ext, is_start);
     response.setStatus(API::CODE_NO_CONTENT);
@@ -236,7 +229,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::BEST_QUALITY))
+  if (api_function == API::BEST_QUALITY.toLower())
   {
     if (json.get(API::P_LOG_FACES_ID).isNull() && (json.get(API::P_STREAM_ID).isNull() || json.get(API::P_DATE).isNull()))
       return;
@@ -255,6 +248,9 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
       return;
     }
 
+    singleton.addLog(API::LOG_CALL_BEST_QUALITY.arg(API::BEST_QUALITY).arg(id_log).arg(
+      vstream_ext, QString::fromStdString(json.get(API::P_DATE).toString().orIfNull(""))));
+
     double interval_before = 0.0;
     double interval_after = 0.0;
 
@@ -269,9 +265,6 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
       interval_after = singleton.task_config.vstream_conf_params[id_vstream][CONF_BEST_QUALITY_INTERVAL_AFTER].value.toDouble();
     }
 
-    singleton.addLog(QString("API call bestQuality: eventId = %1;  streamId = %2;  date = %3").arg(id_log).arg(
-      vstream_ext, QString::fromStdString(json.get(API::P_DATE).toString().orIfNull(""))));
-
     SQLGuard sql_guard;
     QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
 
@@ -279,7 +272,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QString sql_query = (id_log == 0) ? SQL_GET_LOG_FACE_BEST_QUALITY : SQL_GET_LOG_FACE_BY_ID;
     if (!q_get_log_faces.prepare(sql_query))
     {
-      singleton.addLog(API::ERROR_SQL_PREPARE.arg((id_log == 0) ? "SQL_GET_LOG_FACE_BEST_QUALITY" : "SQL_GET_LOG_FACE_BY_ID"));
+      singleton.addLog(ERROR_SQL_PREPARE.arg((id_log == 0) ? "SQL_GET_LOG_FACE_BEST_QUALITY" : "SQL_GET_LOG_FACE_BY_ID"));
       singleton.addLog(q_get_log_faces.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -323,7 +316,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::REGISTER_FACE))
+  if (api_function == API::REGISTER_FACE.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -340,6 +333,9 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     int id_vstream = 0;
     QString comments;
 
+    singleton.addLog(API::LOG_CALL_REGISTER_FACE.arg(API::REGISTER_FACE, vstream_ext, url).arg(
+      face_left).arg(face_top).arg(face_width).arg(face_height));
+
     //scope for lock mutex
     {
       lock_guard<mutex> lock(singleton.mtx_task_config);
@@ -349,17 +345,18 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     }
 
     if (id_vstream == 0)
+    {
+      auto err_msg = API::ERROR_INVALID_VSTREAM.arg(vstream_ext);
+      singleton.addLog(err_msg);
+      simpleResponse(API::CODE_NOT_ACCEPTABLE, err_msg, response);
       return;
-
-    singleton.addLog(QString("API call registerFace: streamId = %1;  url = %2;  face = [%3, %4, %5, %6]").arg(vstream_ext, url).arg(
-      face_left).arg(face_top).arg(face_width).arg(face_height));
+    }
 
     auto task_data = std::make_shared<TaskData>(id_vstream, TASK_GET_FRAME_FROM_URL);
     task_data->is_registration = true;
     task_data->frame_url = url;
     task_data->response_continuation = response.createContinuation();
     auto rd = std::make_shared<RegisterDescriptorResponse>();
-    rd->id_vstream = id_vstream;
     rd->comments = comments;
     rd->face_left = face_left;
     rd->face_top = face_top;
@@ -374,7 +371,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::ADD_FACES) || api_function.contains(API::REMOVE_FACES))
+  if (api_function == API::ADD_FACES.toLower() || api_function == API::REMOVE_FACES.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -397,13 +394,13 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     }
 
     face_ids_list2.chop(2);
-    singleton.addLog(QString("API call %1: streamId = %2;  faceIds = [%3]").arg(
-      api_function.contains(API::ADD_FACES) ? "addFaces" : "removeFaces", vstream_ext, face_ids_list2));
+    singleton.addLog(API::LOG_CALL_ADD_OR_REMOVE_FACES.arg(
+      api_function == API::ADD_FACES.toLower() ? API::ADD_FACES : API::REMOVE_FACES, vstream_ext, face_ids_list2));
 
     bool is_ok2 = true;
-    if (api_function.contains(API::ADD_FACES))
+    if (api_function == API::ADD_FACES.toLower())
       is_ok2 = addFaces(vstream_ext, face_ids);
-    if (api_function.contains(API::REMOVE_FACES))
+    if (api_function == API::REMOVE_FACES.toLower())
       is_ok2 = removeFaces(vstream_ext, face_ids);
     int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
     simpleResponse(code, response);
@@ -411,9 +408,9 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::LIST_STREAMS))
+  if (api_function == API::LIST_STREAMS.toLower())
   {
-    singleton.addLog("API call listStreams");
+    singleton.addLog(API::LOG_CALL_SIMPLE_METHOD.arg(API::LIST_STREAMS));
 
     //для теста
     /*{
@@ -432,7 +429,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QSqlQuery q_vstreams(sql_db);
     if (!q_vstreams.prepare(SQL_GET_VIDEO_STREAMS))
     {
-      singleton.addLog("  Ошибка: не удалось подготовить запрос SQL_GET_VIDEO_STREAMS.");
+      singleton.addLog(ERROR_SQL_PREPARE.arg("SQL_GET_VIDEO_STREAMS"));
       singleton.addLog(q_vstreams.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -440,7 +437,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     q_vstreams.bindValue(":id_worker", singleton.id_worker);
     if (!q_vstreams.exec())
     {
-      singleton.addLog("  Ошибка: не удалось выполнить запрос SQL_GET_VIDEO_STREAMS.");
+      singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_VIDEO_STREAMS"));
       singleton.addLog(q_vstreams.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -449,7 +446,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QSqlQuery q_links_descriptor_vstream(sql_db);
     if (!q_links_descriptor_vstream.prepare(SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID))
     {
-      singleton.addLog("  Ошибка: не удалось подготовить запрос SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID.");
+      singleton.addLog(ERROR_SQL_PREPARE.arg("SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID"));
       singleton.addLog(q_links_descriptor_vstream.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -469,7 +466,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
         q_links_descriptor_vstream.bindValue(":id_vstream", id_vstream);
         if (!q_links_descriptor_vstream.exec())
         {
-          singleton.addLog("  Ошибка: не удалось выполнить запрос SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID.");
+          singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID"));
           singleton.addLog(q_links_descriptor_vstream.lastError().text());
           simpleResponse(API::CODE_SERVER_ERROR, response);
           return;
@@ -502,15 +499,13 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::REMOVE_STREAM))
+  if (api_function == API::REMOVE_STREAM.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
 
     QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
-
-    //cout << "__API call removeStream: streamId = " << vstream_ext.toStdString() << endl;
-    singleton.addLog(QString("API call removeStream: streamId = %1").arg(vstream_ext));
+    singleton.addLog(API::LOG_CALL_REMOVE_STREAM.arg(API::REMOVE_STREAM, vstream_ext));
 
     if (!removeVStream(vstream_ext))
       simpleResponse(API::CODE_SERVER_ERROR, response);
@@ -519,7 +514,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
   }
 
   //для теста
-  if (api_function.contains(API::TEST_IMAGE))
+  if (api_function == API::TEST_IMAGE.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -545,9 +540,9 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::LIST_ALL_FACES))
+  if (api_function == API::LIST_ALL_FACES.toLower())
   {
-    singleton.addLog("API call listAllFaces");
+    singleton.addLog(API::LOG_CALL_SIMPLE_METHOD.arg(API::LIST_ALL_FACES));
 
     SQLGuard sql_guard;
     QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
@@ -555,7 +550,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QSqlQuery q_descriptors(SQL_GET_ALL_FACE_DESCRIPTORS, sql_db);
     if (!q_descriptors.exec())
     {
-      singleton.addLog("  Ошибка: не удалось выполнить запрос SQL_GET_ALL_FACE_DESCRIPTORS.");
+      singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_ALL_FACE_DESCRIPTORS"));
       singleton.addLog(q_descriptors.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -583,7 +578,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::DELETE_FACES))
+  if (api_function == API::DELETE_FACES.toLower())
   {
     if (!checkInputParam(json, response, API::P_FACE_IDS))
       return;
@@ -601,7 +596,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
       }
     }
     face_ids_list2.chop(2);
-    singleton.addLog(QString("API call %1: faceIds = [%2]").arg("deleteFaces", face_ids_list2));
+    singleton.addLog(API::LOG_CALL_DELETE_FACES.arg(API::DELETE_FACES, face_ids_list2));
     bool is_ok2 = deleteFaces(face_ids);
     int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
     simpleResponse(code, response);
@@ -609,7 +604,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function.contains(API::GET_EVENTS))
+  if (api_function == API::GET_EVENTS.toLower())
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -645,7 +640,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
         return;
     }
 
-    singleton.addLog(QString("API call getEvents: streamId = %1;  dateStart = %2;  dateEnd = %3").arg(vstream_ext,
+    singleton.addLog(API::LOG_CALL_GET_EVENTS.arg(API::GET_EVENTS, vstream_ext,
       QString::fromStdString(json.get(API::P_DATE_START).toString().orIfNull("")),
       QString::fromStdString(json.get(API::P_DATE_END).toString().orIfNull(""))));
 
@@ -656,7 +651,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     QString sql_query = SQL_GET_LOG_FACES_FROM_INTERVAL;
     if (!q_get_log_faces.prepare(sql_query))
     {
-      singleton.addLog(API::ERROR_SQL_PREPARE.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
+      singleton.addLog(ERROR_SQL_PREPARE.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
       singleton.addLog(q_get_log_faces.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -667,7 +662,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     q_get_log_faces.bindValue(":date_end", date_end);
     if (!q_get_log_faces.exec())
     {
-      singleton.addLog(API::ERROR_SQL_EXEC.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
+      singleton.addLog(ERROR_SQL_EXEC.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
       singleton.addLog(q_get_log_faces.lastError().text());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
@@ -718,7 +713,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
   int code = API::CODE_ERROR;
   json_error[API::P_CODE] = code;
   json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-  json_error[API::P_MESSAGE] = "Неизвестная API функция в запросе.";
+  json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_UNKNOWN_API_METHOD);
   response.setStatus(code);
   response.out() << Wt::Json::serialize(json_error, API::INDENT);
 }
@@ -745,7 +740,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QHash<int, FaceDescriptor> id_descriptor_to_data;
   id_descriptor_to_data.setSharable(false);
 
-  //scope for lock mutext
+  //scope for lock mutex
   {
     lock_guard<mutex> lock(singleton.mtx_task_config);
     id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
@@ -774,14 +769,14 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
     QSqlQuery q_get_vstream(sql_db);
     if (!q_get_vstream.prepare(SQL_GET_VIDEO_STREAM_BY_EXT))
     {
-      singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
       singleton.addLog(q_get_vstream.lastError().text());
       return false;
     }
     q_get_vstream.bindValue(":vstream_ext", vstream_ext);
     if (!q_get_vstream.exec())
     {
-      singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
       singleton.addLog(q_get_vstream.lastError().text());
       return false;
     }
@@ -870,7 +865,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    singleton.addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -879,7 +874,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QString sql_query = (id_vstream == 0) ? SQL_ADD_VSTREAM : SQL_UPDATE_VSTREAM;
   if (!q_vstream.prepare(sql_query))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg(
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg(
       (id_vstream == 0) ? "SQL_INSERT_VSTREAM" : "SQL_UPDATE_VSTREAM", __FUNCTION__));
     singleton.addLog(q_vstream.lastError().text());
     return false;
@@ -896,7 +891,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   q_vstream.bindValue(":region_height", region_height);
   if (!q_vstream.exec())
   {
-    singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg(
+    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg(
       (id_vstream == 0) ? "SQL_INSERT_VSTREAM" : "SQL_UPDATE_VSTREAM", __FUNCTION__));
     singleton.addLog(q_vstream.lastError().text());
     return false;
@@ -908,7 +903,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QSqlQuery q_link_worker_vstream(sql_db);
   if (!q_link_worker_vstream.prepare(SQL_ADD_LINK_WORKER_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_worker_vstream.lastError().text());
     return false;
   }
@@ -916,7 +911,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   q_link_worker_vstream.bindValue(":id_vstream", id_vstream);
   if (!q_link_worker_vstream.exec())
   {
-    singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_worker_vstream.lastError().text());
     return false;
   }
@@ -925,7 +920,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QSqlQuery q_set_vstream_param(sql_db);
   if (!q_set_vstream_param.prepare(SQL_SET_VIDEO_STREAM_PARAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
     singleton.addLog(q_set_vstream_param.lastError().text());
     return false;
   }
@@ -940,7 +935,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
     q_set_vstream_param.bindValue(":param_value", it.value().value.toString());
     if (!q_set_vstream_param.exec())
     {
-      singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
       singleton.addLog(q_set_vstream_param.lastError().text());
       return false;
     }
@@ -950,7 +945,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QSqlQuery q_descriptor(sql_db);
   if (!q_descriptor.prepare(SQL_GET_FACE_DESCRIPTOR_BY_ID))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
     singleton.addLog(q_descriptor.lastError().text());
     return false;
   }
@@ -958,7 +953,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   QSqlQuery q_link_descriptor_vstream(sql_db);
   if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_descriptor_vstream.lastError().text());
     return false;
   }
@@ -971,7 +966,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
     q_descriptor.bindValue(":id_descriptor", id_descriptor);
     if (!q_descriptor.exec())
     {
-      singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
       singleton.addLog(q_descriptor.lastError().text());
       return false;
     }
@@ -985,7 +980,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
         if (!id_vstream_descriptors.contains(id_descriptor))
         {
           FaceDescriptor fd;
-          fd.create(1, singleton.descriptor_size, CV_32F);
+          fd.create(1, int(singleton.descriptor_size), CV_32F);
           QByteArray ba = q_descriptor.value("descriptor_data").toByteArray();
           std::memcpy(fd.data, ba.data(), ba.size());
           double norm_l2 = cv::norm(fd, cv::NORM_L2);
@@ -1006,7 +1001,7 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
 
   if (!sql_transaction.commit())
   {
-    singleton.addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1038,7 +1033,9 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
       if (!singleton.id_descriptor_to_data.contains(id_descriptor))
       {
         singleton.id_descriptor_to_data[id_descriptor] = std::move(it.value());
-        cout << "  __descriptor loaded from database.\n";
+
+        //для теста
+        //cout << "__descriptor loaded from database.\n";
       }
       singleton.id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
       singleton.id_descriptor_to_id_vstreams[id_descriptor].insert(id_vstream);
@@ -1088,7 +1085,7 @@ void ApiResource::motionDetection(const QString& vstream_ext, bool is_start)
   {
     auto task_data = std::make_shared<TaskData>(id_vstream, TASK_CAPTURE_VSTREAM_FRAME);
     singleton.task_scheduler->addTask(task_data, 0.0);
-    singleton.addLog(QString("Зафиксировано движение. Начало захвата кадров с видео потока %1").arg(task_data->id_vstream));
+    singleton.addLog(API::LOG_START_MOTION.arg(task_data->id_vstream));
   }
 
 }
@@ -1101,7 +1098,7 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
 
   int id_vstream = 0;
 
-  //scope for lock mutext
+  //scope for lock mutex
   {
     lock_guard<mutex> lock(singleton.mtx_task_config);
     id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
@@ -1116,7 +1113,7 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    singleton.addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1125,7 +1122,7 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
   QSqlQuery q_link_descriptor_vstream(sql_db);
   if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_descriptor_vstream.lastError().text());
     return false;
   }
@@ -1141,7 +1138,7 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
 
   if (!sql_transaction.commit())
   {
-    singleton.addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1171,14 +1168,14 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
     QSqlQuery q_descriptor(sql_db);
     if (!q_descriptor.prepare(SQL_GET_FACE_DESCRIPTOR_BY_ID))
     {
-      singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
       singleton.addLog(q_descriptor.lastError().text());
       return false;
     }
 
     if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
     {
-      singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
       singleton.addLog(q_link_descriptor_vstream.lastError().text());
       return false;
     }
@@ -1188,7 +1185,7 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
       q_descriptor.bindValue(":id_descriptor", id_descriptor);
       if (!q_descriptor.exec())
       {
-        singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
+        singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
         singleton.addLog(q_descriptor.lastError().text());
         return false;
       }
@@ -1197,10 +1194,10 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
         if (q_descriptor.value("id_descriptor").toInt() == id_descriptor && id_descriptor > 0)
         {
           //для теста
-          cout << "load from db descriptor: " << id_descriptor << endl;
+          //cout << "load from db descriptor: " << id_descriptor << endl;
 
           FaceDescriptor fd;
-          fd.create(1, singleton.descriptor_size, CV_32F);
+          fd.create(1, int(singleton.descriptor_size), CV_32F);
           QByteArray ba = q_descriptor.value("descriptor_data").toByteArray();
           std::memcpy(fd.data, ba.data(), ba.size());
           double norm_l2 = cv::norm(fd, cv::NORM_L2);
@@ -1241,7 +1238,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
 
   int id_vstream = 0;
 
-  //scope for lock mutext
+  //scope for lock mutex
   {
     lock_guard<mutex> lock(singleton.mtx_task_config);
     id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
@@ -1256,7 +1253,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    singleton.addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1266,7 +1263,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
   QSqlQuery q_link_descriptor_vstream(sql_db);
   if (!q_link_descriptor_vstream.prepare(SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_descriptor_vstream.lastError().text());
     return false;
   }
@@ -1274,7 +1271,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
   QSqlQuery q_check_link(sql_db);
   if (!q_check_link.prepare(SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
     singleton.addLog(q_check_link.lastError().text());
     return false;
   }
@@ -1291,7 +1288,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
       q_check_link.bindValue(":id_descriptor", id_descriptor);
       if (!q_check_link.exec())
       {
-        singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
+        singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
         singleton.addLog(q_check_link.lastError().text());
         return false;
       }
@@ -1303,7 +1300,7 @@ bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>
 
   if (!sql_transaction.commit())
   {
-    singleton.addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1338,7 +1335,7 @@ bool ApiResource::deleteFaces(const std::vector<int>& face_ids)
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    singleton.addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1346,7 +1343,7 @@ bool ApiResource::deleteFaces(const std::vector<int>& face_ids)
   QSqlQuery q_remove_face_descriptor(sql_db);
   if (!q_remove_face_descriptor.prepare(SQL_REMOVE_FACE_DESCRIPTOR))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
     singleton.addLog(q_remove_face_descriptor.lastError().text());
     return false;
   }
@@ -1356,7 +1353,7 @@ bool ApiResource::deleteFaces(const std::vector<int>& face_ids)
     q_remove_face_descriptor.bindValue(":id_descriptor", id_descriptor);
     if (!q_remove_face_descriptor.exec())
     {
-      singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
+      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
       singleton.addLog(q_remove_face_descriptor.lastError().text());
       return false;
     }
@@ -1364,7 +1361,7 @@ bool ApiResource::deleteFaces(const std::vector<int>& face_ids)
 
   if (!sql_transaction.commit())
   {
-    singleton.addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1396,7 +1393,7 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
 
   int id_vstream = 0;
 
-  //scope for lock mutext
+  //scope for lock mutex
   {
     lock_guard<mutex> lock(singleton.mtx_task_config);
     id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
@@ -1414,7 +1411,7 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    singleton.addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }
@@ -1423,14 +1420,14 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
   QSqlQuery q_link_descriptor_vstream(sql_db);
   if (!q_link_descriptor_vstream.prepare(SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_descriptor_vstream.lastError().text());
     return false;
   }
   q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
   if (!q_link_descriptor_vstream.exec())
   {
-    singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
     singleton.addLog(q_link_descriptor_vstream.lastError().text());
     return false;
   }
@@ -1445,7 +1442,7 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
   QSqlQuery q_remove_link_worker_vstream(sql_db);
   if (!q_remove_link_worker_vstream.prepare(SQL_REMOVE_LINK_WORKER_VSTREAM))
   {
-    singleton.addLog(API::ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
     singleton.addLog(q_remove_link_worker_vstream.lastError().text());
     return false;
   }
@@ -1453,14 +1450,14 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
   q_remove_link_worker_vstream.bindValue(":id_vstream", id_vstream);
   if (!q_remove_link_worker_vstream.exec())
   {
-    singleton.addLog(API::ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
+    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
     singleton.addLog(q_remove_link_worker_vstream.lastError().text());
     return false;
   }
 
   if (!sql_transaction.commit())
   {
-    singleton.addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     singleton.addLog(sql_db.lastError().text());
     return false;
   }

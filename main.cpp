@@ -161,7 +161,7 @@ int main(int argc, char** argv)
       singleton.task_config.conf_params[CONF_FILE].value = argv[i + 1];
   }
 
-  int thread_pool_size = std::thread::hardware_concurrency();
+  auto thread_pool_size = std::thread::hardware_concurrency();
   QString api_path = "";
 
   if (!args.contains("-h", Qt::CaseInsensitive) && !args.contains("--help", Qt::CaseInsensitive))
@@ -389,7 +389,7 @@ int main(int argc, char** argv)
         singleton.task_scheduler->addPermanentTasks();
 
         //для теста
-        singleton.task_scheduler->printCounters();
+        //singleton.task_scheduler->printCounters();
 
 #ifdef WT_THREADED
         int sig = Wt::WServer::waitForShutdown();

@@ -53,7 +53,7 @@
  *   "yaw-threshold"} params.paramName название параметра
  * @apiParam {Any} params.paramValue значение параметра, тип зависит от названия параметра
  * 
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "url": "http://host/getImage",
@@ -64,6 +64,10 @@
  *   ]
  * }
  *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 406 некорректное значение входных параметров в запросе
+ * 500 ошибка на сервере
  */
 
 
@@ -79,7 +83,7 @@
  * @apiSuccess {String} -.streamId идентификатор видео потока
  * @apiSuccess {Number[]} [-.faces] массив faceId (идентификаторов дескрипторов)
  *
- * @apiSuccessExample {json} Пример результата выполнения:
+ * @apiSuccessExample {json} Пример результата выполнения
  * [
  *   {
  *     "streamId": "1234",
@@ -90,6 +94,9 @@
  *     "faces": [456, 789, 910]
  *   }
  * ]
+ *
+ * @apiErrorExample {json} Ошибки
+ * 500 ошибка на сервере
  */
 
 
@@ -106,11 +113,14 @@
  *
  * @apiParam {String} streamId идентификатор видео потока
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234"
  * }
  *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 500 ошибка на сервере
  */
 
 
@@ -123,14 +133,16 @@
  * @apiDescription **[в работе]**
  *
  * @apiParam {String} streamId идентификатор видео потока
- * @apiParam {String="t","f"} start признак начала ("t") или конца ("f") детекции движения
+ * @apiParam {String} start признак начала ("t") или конца (любое значение, не равное "t", например, "f") детекции движения
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "start": "t"
  * }
  *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
  */
 
 
@@ -146,18 +158,18 @@
  * @apiParam {String="yyyy-MM-dd hh:mm:ss"} [date] дата события (обязательный, если указан streamId)
  * @apiParam {Number} [eventId] идентификатор события из журнала FRS (обязательный, если не указан streamId); если указан, то остальные параметры игнорируются
  * 
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "eventId": 12345
  * }
  *
  * @apiSuccess {String} screenshot URL кадра
- * @apiSuccess {Number} left коордианата X левого верхнего угла прямоугольной области лица
- * @apiSuccess {Number} top коордианата Y левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} left координата X левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} top координата Y левого верхнего угла прямоугольной области лица
  * @apiSuccess {Number} width ширина прямоугольной области лица
  * @apiSuccess {Number} height высота прямоугольной области лица
  *
- * @apiSuccessExample {json} Пример результата выполнения:
+ * @apiSuccessExample {json} Пример результата выполнения
  * {
  *   "screenshot": "https://...",
  *   "left": 537,
@@ -165,6 +177,11 @@
  *   "width": 142,
  *   "height": 156
  * }
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 406 некорректное значение входных параметров в запросе
+ * 500 ошибка на сервере
  */
 
 
@@ -180,7 +197,7 @@
  * @apiParam {String="yyyy-MM-dd hh:mm:ss"} dateStart начальная дата интервала событий
  * @apiParam {String="yyyy-MM-dd hh:mm:ss"} dateEnd конечная дата интервала событий
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "dateStart": "2021-08-17 08:00:10",
@@ -192,12 +209,12 @@
  * @apiSuccess {Number} [-.faceId] идентификатор зарегистрированного дескриптора распознанного лица
  * @apiSuccess {Number} -.quality параметр "качества" лица
  * @apiSuccess {String} -.screenshot URL кадра
- * @apiSuccess {Number} -.left коордианата X левого верхнего угла прямоугольной области лица
- * @apiSuccess {Number} -.top коордианата Y левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} -.left координата X левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} -.top координата Y левого верхнего угла прямоугольной области лица
  * @apiSuccess {Number} -.width ширина прямоугольной области лица
  * @apiSuccess {Number} -.height высота прямоугольной области лица
  *
- * @apiSuccessExample {json} Пример результата выполнения:
+ * @apiSuccessExample {json} Пример результата выполнения
  * [
  *   {
  *     "date": "2021-08-17 08:00:15.834",
@@ -219,6 +236,11 @@
  *     "height": 182
  *   }
  * ]
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 406 некорректное значение входных параметров в запросе
+ * 500 ошибка на сервере
  */
 
 
@@ -232,12 +254,12 @@
  *
  * @apiParam {String} streamId идентификатор видео потока
  * @apiParam {String} url URL изображения для регистрации
- * @apiParam {Number} [left=0] коордианата X левого верхнего угла прямоугольной области лица
- * @apiParam {Number} [top=0] коордианата Y левого верхнего угла прямоугольной области лица
+ * @apiParam {Number} [left=0] координата X левого верхнего угла прямоугольной области лица
+ * @apiParam {Number} [top=0] координата Y левого верхнего угла прямоугольной области лица
  * @apiParam {Number} [width="0 (вся ширина изображения)"] ширина прямоугольной области лица
  * @apiParam {Number} [height="0 (вся высота изображения)"] высота прямоугольной области лица
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "url": "https://host/imageToRegister",
@@ -249,12 +271,12 @@
  *
  * @apiSuccess {Number} faceId идентификатор зарегистрированного дескриптора
  * @apiSuccess {String} faceImage URL изображения лица зарегистрированного дескриптора
- * @apiSuccess {Number} left коордианата X левого верхнего угла прямоугольной области лица
- * @apiSuccess {Number} top коордианата Y левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} left координата X левого верхнего угла прямоугольной области лица
+ * @apiSuccess {Number} top координата Y левого верхнего угла прямоугольной области лица
  * @apiSuccess {Number} width ширина прямоугольной области лица
  * @apiSuccess {Number} height высота прямоугольной области лица
  *
- * @apiSuccessExample {json} Пример результата выполнения:
+ * @apiSuccessExample {json} Пример результата выполнения
  * {
  *   "faceId": 4567,
  *   "faceImage": "data:image/jpeg,base64,...",
@@ -263,6 +285,11 @@
  *   "width": 142,
  *   "height": 156
  * }
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 406 некорректное значение входных параметров в запросе
+ * 500 ошибка на сервере
  */
 
 
@@ -277,12 +304,15 @@
  * @apiParam {String} streamId идентификатор видео потока
  * @apiParam {Number[]} faces массив faceId (идентификаторов дескрипторов)
  * 
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "faces": [123, 234, 4567]
  * }
  *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 500 ошибка на сервере
  */
 
 
@@ -299,12 +329,15 @@
  * @apiParam {String} streamId идентификатор видео потока
  * @apiParam {Number[]} faces массив faceId (идентификаторов дескрипторов)
  * 
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "faces": [123, 234, 4567]
  * }
  *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 500 ошибка на сервере
  */
 
 
@@ -320,10 +353,14 @@
  *
  * @apiParam {Number[]} faces массив faceId (идентификаторов дескрипторов)
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "faces": [123, 234, 4567]
  * }
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 500 ошибка на сервере
  *
  */
 
@@ -340,9 +377,11 @@
  *
  * @apiSuccess {Number[]} - массив faceId (идентификаторов дескрипторов)
  *
- * @apiSuccessExample {json} Пример результата выполнения:
+ * @apiSuccessExample {json} Пример результата выполнения
  * [123, 456, 789]
  *
+ * @apiErrorExample {json} Ошибки
+ * 500 ошибка на сервере
  */
 
 
@@ -357,7 +396,7 @@
  * @apiParam {Number} faceId идентификатор дескриптора распознанного лица
  * @apiParam {Number} eventId идентификатор события из журнала FRS
  *
- * @apiParamExample {json} Пример использования:
+ * @apiParamExample {json} Пример использования
  * {
  *   "faceId": 4567,
  *   "eventId": 12345
@@ -390,15 +429,12 @@ namespace API
   constexpr const char* MIME_TYPE = "application/json";
 
   constexpr const char* MSG_DONE = "запрос выполнен";
-  constexpr const char* MSG_UNAUTHORIZED = "не авторизован";
   constexpr const char* MSG_SERVER_ERROR = "ошибка на сервере";
 
   //код ответа
   constexpr const int CODE_SUCCESS = 200;
   constexpr const int CODE_NO_CONTENT = 204;
   constexpr const int CODE_ERROR = 400;
-  constexpr const int CODE_UNAUTHORIZED = 401;
-  constexpr const int CODE_FORBIDDEN = 403;
   constexpr const int CODE_NOT_ACCEPTABLE = 406;
   constexpr const int CODE_SERVER_ERROR = 500;
 
@@ -408,7 +444,6 @@ namespace API
       {CODE_SUCCESS, "OK"}
     , {CODE_NO_CONTENT, "No Content"}
     , {CODE_ERROR, "Bad Request"}
-    , {CODE_UNAUTHORIZED, "Unauthorized"}
     , {CODE_NOT_ACCEPTABLE, "Not Acceptable"}
     , {CODE_SERVER_ERROR, "Internal Server Error"}
   };
@@ -418,7 +453,6 @@ namespace API
       {CODE_SUCCESS, MSG_DONE}
     , {CODE_NO_CONTENT, "нет содержимого"}
     , {CODE_ERROR, "некорректный запрос"}
-    , {CODE_UNAUTHORIZED, MSG_UNAUTHORIZED}
     , {CODE_NOT_ACCEPTABLE, "некорректное значение входных параметров в запросе"}
     , {CODE_SERVER_ERROR, MSG_SERVER_ERROR}
   };
@@ -426,23 +460,36 @@ namespace API
   const QString DATETIME_FORMAT = "yyyy-MM-dd hh:mm:ss";
   const QString DATETIME_FORMAT_LOG_FACES = "yyyy-MM-dd hh:mm:ss.zzz";
   const QString INCORRECT_PARAMETER = QStringLiteral("Некорректное значение параметра \"%1\" в запросе.");
-  const QString ERROR_SQL_PREPARE = QStringLiteral("Ошибка: не удалось подготовить запрос %1.");
-  const QString ERROR_SQL_EXEC = QStringLiteral("Ошибка: не удалось выполнить запрос %1.");
-  const QString ERROR_SQL_PREPARE_IN_FUNCTION = QStringLiteral("Ошибка: не удалось подготовить запрос %1 в функции %2.");
-  const QString ERROR_SQL_EXEC_IN_FUNCTION = QStringLiteral("Ошибка: не удалось выполнить запрос %1 в функции %2.");
+  const QString ERROR_INVALID_VSTREAM = QStringLiteral("Не зарегистрирован видео поток с идентификатором %1.");
+  const QString ERROR_UNKNOWN_API_METHOD = QStringLiteral("Неизвестная API функция в запросе.");
+  const QString ERROR_MISSING_PARAMETER = QStringLiteral("Отсутствует параметр \"%1\" в запросе.");
+  const QString ERROR_EMPTY_VALUE = QStringLiteral("Пустое значение у параметра \"%1\" в запросе.");
+  const QString ERROR_REQUEST_STRUCTURE = QStringLiteral("Ошибка в структуре запроса.");
 
   //запросы
-  const QString ADD_STREAM = QStringLiteral("/addstream");  // добавить или изменить видео поток
-  const QString MOTION_DETECTION = QStringLiteral("/motiondetection");  //информация о детекции движения
-  const QString BEST_QUALITY = QStringLiteral("/bestquality");  //получить информацию о кадре с "лучшим" лицом
-  const QString REGISTER_FACE = QStringLiteral("/registerface");  //зарегистрировать лицо
-  const QString ADD_FACES = QStringLiteral("/addfaces");  //привязать дескрипторы к видео потоку
-  const QString REMOVE_FACES = QStringLiteral("/removefaces");  //отвязать дескрипторы от видео потока
-  const QString LIST_STREAMS = QStringLiteral("/liststreams");  //список обрабатываемых видеопотоков и дескрипторов
-  const QString REMOVE_STREAM = QStringLiteral("/removestream");  //убрать видеопоток
-  const QString LIST_ALL_FACES = QStringLiteral("/listallfaces");  //список всех дескрипторов
-  const QString DELETE_FACES = QStringLiteral("/deletefaces");  //удалить список дескрипторов из базы (в независимости от привязок к видеопотокам)
-  const QString GET_EVENTS = QStringLiteral("/getevents");  //получить список событий из временного интервала
+  const QString ADD_STREAM = QStringLiteral("/addStream");  // добавить или изменить видео поток
+  const QString MOTION_DETECTION = QStringLiteral("/motionDetection");  //информация о детекции движения
+  const QString BEST_QUALITY = QStringLiteral("/bestQuality");  //получить информацию о кадре с "лучшим" лицом
+  const QString REGISTER_FACE = QStringLiteral("/registerFace");  //зарегистрировать лицо
+  const QString ADD_FACES = QStringLiteral("/addFaces");  //привязать дескрипторы к видео потоку
+  const QString REMOVE_FACES = QStringLiteral("/removeFaces");  //отвязать дескрипторы от видео потока
+  const QString LIST_STREAMS = QStringLiteral("/listStreams");  //список обрабатываемых видеопотоков и дескрипторов
+  const QString REMOVE_STREAM = QStringLiteral("/removeStream");  //убрать видеопоток
+  const QString LIST_ALL_FACES = QStringLiteral("/listAllFaces");  //список всех дескрипторов
+  const QString DELETE_FACES = QStringLiteral("/deleteFaces");  //удалить список дескрипторов из базы (в независимости от привязок к видеопотокам)
+  const QString GET_EVENTS = QStringLiteral("/getEvents");  //получить список событий из временного интервала
+
+  //логи для вызова методов
+  const QString LOG_CALL_ADD_STREAM = QStringLiteral("API call %1: streamId = %2;  url = %3;  callback = %4");
+  const QString LOG_CALL_MOTION_DETECTION = QStringLiteral("API call %1: streamId = %2;  isStart = %3");
+  const QString LOG_CALL_BEST_QUALITY = QStringLiteral("API call %1: eventId = %2;  streamId = %3;  date = %4");
+  const QString LOG_CALL_REGISTER_FACE =  QStringLiteral("API call %1: streamId = %2;  url = %3;  face = [%4, %5, %6, %7]");
+  const QString LOG_CALL_ADD_OR_REMOVE_FACES = QStringLiteral("API call %1: streamId = %2;  faceIds = [%3]");
+  const QString LOG_CALL_SIMPLE_METHOD = QStringLiteral("API call %1");
+  const QString LOG_CALL_REMOVE_STREAM = QStringLiteral("API call %1: streamId = %2");
+  const QString LOG_CALL_DELETE_FACES = QStringLiteral("API call %1: faceIds = [%2]");
+  const QString LOG_CALL_GET_EVENTS = QStringLiteral("API call %1: streamId = %2;  dateStart = %3;  dateEnd = %4");
+  const QString LOG_START_MOTION = QStringLiteral("Зафиксировано движение. Начало захвата кадров с видео потока %1");
 
   //для теста
   const QString TEST_IMAGE = QStringLiteral("/testimage");  //протестировать изображение
@@ -477,12 +524,6 @@ namespace API
   constexpr const char* P_DATE_START = "dateStart";
   constexpr const char* P_DATE_END = "dateEnd";
 }
-
-struct ApiResponseStatus
-{
-  int code{};
-  QString msg = "";
-};
 
 class ApiResource : public Wt::WResource
 {

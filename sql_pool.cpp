@@ -16,7 +16,7 @@ SQLPool::SQLPool(int pool_size_, QString prefix_, QString  sql_driver_, QString 
 
 SQLPool::~SQLPool()
 {
-  //scope for lock mutext
+  //scope for lock mutex
   {
     std::lock_guard<std::mutex> lock(mtx_pool);
     is_working = false;
@@ -27,7 +27,7 @@ SQLPool::~SQLPool()
 QString SQLPool::acquireConnection()
 {
   QString conn_name;
-  //scope for lock mutext
+  //scope for lock mutex
   {
     std::unique_lock<std::mutex> lock(mtx_pool);
     cv_pool.wait(lock, [this]

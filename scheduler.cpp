@@ -1,4 +1,5 @@
 #include <chrono>
+#include <utility>
 
 #include "scheduler.h"
 #include "singleton.h"
@@ -19,7 +20,6 @@ namespace
 {
   constexpr const int HTTP_SUCCESS = 200;
   constexpr const int HTTP_NO_CONTENT = 204;
-  constexpr const int HTTP_REDIRECTION = 300;
 }
 
 // OpenCV port of 'LAPV' algorithm (Pech2000)
@@ -495,7 +495,7 @@ bool detectFaces(int id_vstream, const cv::Mat& frame, const TaskConfig& task_co
           det.landmark[2 * j] = (px + kps_preds.at<float>(2 * k, 2 * j)) / scale;
           det.landmark[2 * j + 1] = (py + kps_preds.at<float>(2 * k, 2 * j + 1)) / scale;
         }
-        detected_faces.push_back(std::move(det));
+        detected_faces.push_back(det);
       }
       if (scores_data[2 * k + 1] >= face_confidence_threshold)
       {
@@ -510,7 +510,7 @@ bool detectFaces(int id_vstream, const cv::Mat& frame, const TaskConfig& task_co
           det.landmark[2 * j] = (px + kps_preds.at<float>(2 * k + 1, 2 * j)) / scale;
           det.landmark[2 * j + 1] = (py + kps_preds.at<float>(2 * k + 1, 2 * j + 1)) / scale;
         }
-        detected_faces.push_back(std::move(det));
+        detected_faces.push_back(det);
       }
     }
   }
@@ -548,8 +548,8 @@ std::vector<FaceClass> softMax(const std::vector<float>& v)
 {
    std::vector<FaceClass> r(v.size());
    float s = 0.0f;
-   for (int i = 0; i < v.size(); ++i)
-     s += exp(v[i]);
+   for (float i : v)
+     s += exp(i);
    for (int i = 0; i < v.size(); ++i)
    {
      r[i].class_index = i;
@@ -796,7 +796,7 @@ bool extractFaceDescriptor(int id_vstream, const cv::Mat& aligned_face, const Ta
     return false;
   }
 
-  auto m_result = cv::Mat(1, singleton.descriptor_size, CV_32F, result_data);
+  auto m_result = cv::Mat(1, int(singleton.descriptor_size), CV_32F, result_data);
   face_descriptor = m_result.clone();
 
   return true;
@@ -807,7 +807,7 @@ cv::Rect enlargeFaceRect(const cv::Rect& face_rect, double k)
   int cx = face_rect.tl().x + face_rect.width / 2;
   int cy = face_rect.tl().y + face_rect.height / 2;
   int max_side = int(max(face_rect.width, face_rect.height) * k);
-  return cv::Rect(cx - max_side / 2, cy - max_side / 2, max_side, max_side);
+  return {cx - max_side / 2, cy - max_side / 2, max_side, max_side};
 }
 
 struct FaceData
@@ -828,7 +828,7 @@ struct FaceData
 
 //TaskData
 TaskData::TaskData(int id_vstream_, TaskType task_type_, bool permanent_task_, int error_count_, cv::Mat frame_)
-  : id_vstream(id_vstream_), task_type(task_type_), permanent_task(permanent_task_), error_count(error_count_), frame(frame_)
+  : id_vstream(id_vstream_), task_type(task_type_), permanent_task(permanent_task_), error_count(error_count_), frame(std::move(frame_))
 {
   //для теста
   //cout << "__contructor TaskData, task type: " << task_type << endl;
@@ -905,10 +905,10 @@ Scheduler::~Scheduler()
 
 void Scheduler::addTask(const shared_ptr<TaskData>& task_data, double delayToRun)
 {
-  if (task_data == nullptr || this == nullptr)
+  if (task_data == nullptr)
     return;
 
-  if (task_data.get() == nullptr)
+  if (task_data == nullptr)
     return;
 
   if (delayToRun == 0.0)
@@ -991,7 +991,7 @@ void Scheduler::schedulerThread()
         if (now >= task_queue.top()->tp)
         {
           {
-            lock_guard<mutex> lock(mtx_workers);
+            lock_guard<mutex> lock2(mtx_workers);
             if (log_level >= LOGS_VERBOSE)
               Singleton::instance().addLog(QString("Добавлено задание в пул потоков для видео потока: %1 [%2]").arg(
                 task_queue.top()->data->id_vstream).arg(
@@ -1096,7 +1096,7 @@ void Scheduler::runWorkerTask(const shared_ptr<TaskData>& task_data, TaskConfig&
           client->setTimeout(std::chrono::milliseconds{int(1000 * task_config.vstream_conf_params[task_data->id_vstream][CONF_CAPTURE_TIMEOUT].value.toDouble())});
           client->setMaximumResponseSize(8 * 1024 * 1024);  //TODO config
           client->setSslCertificateVerificationEnabled(false);
-          client->done().connect(std::bind(&Scheduler::handleHttpScreenshotReponse, this, std::placeholders::_1, std::placeholders::_2,
+          client->done().connect(std::bind(&Scheduler::handleHttpScreenshotResponse, this, std::placeholders::_1, std::placeholders::_2,
             client, TaskInfo(*task_data), task_config.vstream_conf_params[task_data->id_vstream][CONF_MAX_CAPTURE_ERROR_COUNT].value.toInt(),
             task_config.vstream_conf_params[task_data->id_vstream][CONF_RETRY_PAUSE].value.toInt()));
           if (!client->get(screenshot_url.toStdString()))
@@ -1121,9 +1121,6 @@ void Scheduler::runWorkerTask(const shared_ptr<TaskData>& task_data, TaskConfig&
       break;
 
     case TASK_RECOGNIZE:
-      processFrame(task_data.get(), task_config, nullptr);
-      break;
-
     case TASK_TEST:
       processFrame(task_data.get(), task_config, nullptr);
       break;
@@ -1164,7 +1161,7 @@ void Scheduler::runWorkerTask(const shared_ptr<TaskData>& task_data, TaskConfig&
     Singleton::instance().addLog(QString("  --> end runWorkerTask: id_vstream=%1").arg(task_data->id_vstream));
 }
 
-void Scheduler::handleHttpScreenshotReponse(Wt::AsioWrapper::error_code ec, const Wt::Http::Message& response,
+void Scheduler::handleHttpScreenshotResponse(Wt::AsioWrapper::error_code ec, const Wt::Http::Message& response,
   Wt::Http::Client* client, TaskInfo task_info, int max_error_count, int retry_pause)
 {
   shared_ptr<Wt::Http::Client> client_ptr(client);
@@ -1182,6 +1179,7 @@ void Scheduler::handleHttpScreenshotReponse(Wt::AsioWrapper::error_code ec, cons
       singleton.addLog(QString("Ошибка при захвате кадра с видео потока id_vstream = %3: %1, %2").arg(
         QString::fromStdString(ec.message())).arg(response.status()).arg(task_info.id_vstream));
     if (task_info.task_type == TASK_CAPTURE_VSTREAM_FRAME)
+    {
       if (task_info.error_count < max_error_count)
       {
         ++task_info.error_count;
@@ -1205,7 +1203,8 @@ void Scheduler::handleHttpScreenshotReponse(Wt::AsioWrapper::error_code ec, cons
             singleton.is_capturing.remove(task_info.id_vstream);
           }
         }
-			}
+      }
+    }
     if (task_info.response_continuation != nullptr)
       task_info.response_continuation->haveMoreData();
   } else
@@ -1230,10 +1229,9 @@ void Scheduler::handleHttpScreenshotReponse(Wt::AsioWrapper::error_code ec, cons
       if (task_info.task_type == TASK_CAPTURE_VSTREAM_FRAME)
         new_task_data = std::make_shared<TaskData>(task_info.id_vstream, TASK_RECOGNIZE,
           task_info.permanent_task, 0, std::move(frame));
-      if (task_info.task_type == TASK_GET_FRAME_FROM_URL && task_info.is_registration)
-      {
-        new_task_data = std::make_shared<TaskData>(task_info.id_vstream, TASK_REGISTER_DESCRIPTOR, false, 0, std::move(frame));
-      }
+      else
+        if (task_info.task_type == TASK_GET_FRAME_FROM_URL && task_info.is_registration)
+          new_task_data = std::make_shared<TaskData>(task_info.id_vstream, TASK_REGISTER_DESCRIPTOR, false, 0, std::move(frame));
     }
     if (new_task_data != nullptr)
     {
@@ -1374,7 +1372,7 @@ void Scheduler::processFrame(TaskData* task_data, TaskConfig& task_config, Regis
         if (aligned_face.cols != singleton.face_width || aligned_face.rows != singleton.face_height)
         {
           if (log_level >= LOGS_VERBOSE || task_data->task_type == TASK_TEST)
-            singleton.addLog("      не удалось выровнить лицо для получения дескриптора");
+            singleton.addLog("      не удалось сделать выравнивание лица для получения дескриптора");
 
           continue;
         }
@@ -1406,7 +1404,7 @@ void Scheduler::processFrame(TaskData* task_data, TaskConfig& task_config, Regis
         if (aligned_face_class.cols != face_class_width || aligned_face_class.rows != face_class_height)
         {
           if (log_level >= LOGS_VERBOSE || task_data->task_type == TASK_TEST)
-            singleton.addLog("      не удалось выровнить лицо для инференса класса");
+            singleton.addLog("      не удалось сделать выравнивание лица для инференса класса");
 
           continue;
         }
@@ -1471,7 +1469,7 @@ void Scheduler::processFrame(TaskData* task_data, TaskConfig& task_config, Regis
 
           for (auto it_descriptor = singleton.id_vstream_to_id_descriptors[task_data->id_vstream].constBegin(); it_descriptor != singleton.id_vstream_to_id_descriptors[task_data->id_vstream].constEnd(); ++it_descriptor)
           {
-            double cos_distance = singleton.cosineDistance(face_descriptor, singleton.id_descriptor_to_data[*it_descriptor]);
+            double cos_distance = Singleton::cosineDistance(face_descriptor, singleton.id_descriptor_to_data[*it_descriptor]);
             if (cos_distance > max_cos_distance)
             {
               max_cos_distance = cos_distance;

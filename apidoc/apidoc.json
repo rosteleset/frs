@@ -1,7 +1,7 @@
 {
-  "name": "Face Recognition System API",
+  "name": "Face Recognition System",
   "version": "1.0.0",
-  "title": "Face Recognition System API",
+  "title": "Face Recognition System",
   "sampleUrl": null,
   "order": [
     "Host-->FRS",

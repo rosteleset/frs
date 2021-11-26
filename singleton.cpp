@@ -80,7 +80,7 @@ QSqlDatabase SqlTransaction::getDatabase()
 
 Singleton::Singleton()
 {
-  std::srand(unsigned(std::time(nullptr)));
+  std::srand(std::clock());
   id_descriptor_to_data.setSharable(false);
   id_vstream_to_id_descriptors.setSharable(false);
   id_descriptor_to_id_vstreams.setSharable(false);
@@ -122,14 +122,14 @@ void Singleton::loadData()
   QSqlQuery q_face_descriptors(sql_db);
   if (!q_face_descriptors.prepare(SQL_GET_FACE_DESCRIPTORS))
   {
-    addLog("Ошибка: не удалось подготовить запрос SQL_GET_FACE_DESCRIPTORS.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTORS", __FUNCTION__));
     addLog(q_face_descriptors.lastError().text());
     return;
   }
   q_face_descriptors.bindValue(":id_worker", id_worker);
   if (!q_face_descriptors.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_GET_FACE_DESCRIPTORS.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTORS", __FUNCTION__));
     addLog(q_face_descriptors.lastError().text());
     return;
   }
@@ -138,7 +138,7 @@ void Singleton::loadData()
   {
     int id_descriptor = q_face_descriptors.value("id_descriptor").toInt();
     FaceDescriptor fd;
-    fd.create(1, descriptor_size, CV_32F);
+    fd.create(1, int(descriptor_size), CV_32F);
     QByteArray ba = q_face_descriptors.value("descriptor_data").toByteArray();
     std::memcpy(fd.data, ba.data(), ba.size());
     double norm_l2 = cv::norm(fd, cv::NORM_L2);
@@ -151,14 +151,12 @@ void Singleton::loadData()
 
 int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const cv::Mat& f_img)
 {
-  int id_descriptor{};
-
   SQLGuard sql_guard;
   QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_db.lastError().text());
     return {};
   }
@@ -167,24 +165,24 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
   QSqlQuery q_add_face_descriptor(sql_db);
   if (!q_add_face_descriptor.prepare(SQL_ADD_FACE_DESCRIPTOR))
   {
-    addLog("Ошибка: не удалось подготовить запрос SQL_ADD_FACE_DESCRIPTOR.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_FACE_DESCRIPTOR", __FUNCTION__));
     addLog(q_add_face_descriptor.lastError().text());
     return {};
   }
   q_add_face_descriptor.bindValue(":descriptor_data",
-    QByteArray((char*)fd.data, descriptor_size * sizeof(float)), QSql::In | QSql::Binary);
+    QByteArray((char*)fd.data, int(descriptor_size * sizeof(float))), QSql::In | QSql::Binary);
   if (!q_add_face_descriptor.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_ADD_FACE_DESCRIPTOR.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_FACE_DESCRIPTOR", __FUNCTION__));
     addLog(q_add_face_descriptor.lastError().text());
     return {};
   }
-  id_descriptor = q_add_face_descriptor.lastInsertId().toInt();
+  int id_descriptor = q_add_face_descriptor.lastInsertId().toInt();
 
   QSqlQuery q_add_descriptor_image(sql_db);
   if (!q_add_descriptor_image.prepare(SQL_ADD_DESCRIPTOR_IMAGE))
   {
-    addLog("Ошибка: не удалось подготовить запрос SQL_ADD_DESCRIPTOR_IMAGE.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_DESCRIPTOR_IMAGE", __FUNCTION__ ));
     addLog(q_add_descriptor_image.lastError().text());
     return {};
   }
@@ -192,10 +190,10 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
   q_add_descriptor_image.bindValue(":mime_type", "image/jpeg");
   std::vector<uchar> buff_;
   cv::imencode(".jpg", f_img, buff_);
-  q_add_descriptor_image.bindValue(":face_image", QByteArray((char*)buff_.data(), buff_.size()), QSql::In | QSql::Binary);
+  q_add_descriptor_image.bindValue(":face_image", QByteArray((char*)buff_.data(), int(buff_.size())), QSql::In | QSql::Binary);
   if (!q_add_descriptor_image.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_ADD_DESCRIPTOR_IMAGE.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_DESCRIPTOR_IMAGE", __FUNCTION__));
     addLog(q_add_descriptor_image.lastError().text());
     return {};
   }
@@ -203,7 +201,7 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
   QSqlQuery q_link_descriptor_vstream(sql_db);
   if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
   {
-    addLog(QString("Ошибка: не удалось подготовить запрос %1 в функции %2.").arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
     addLog(q_link_descriptor_vstream.lastError().text());
     return {};
   }
@@ -213,7 +211,7 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
 
   if (!sql_transaction.commit())
   {
-    addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_transaction.getDatabase().lastError().text());
     return {};
   }
@@ -225,7 +223,7 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
       norm_l2 = 1.0;
 
     lock_guard<mutex> lock(mtx_task_config);
-    id_descriptor_to_data[id_descriptor] = std::move(fd.clone() / norm_l2);
+    id_descriptor_to_data[id_descriptor] = fd.clone() / norm_l2;
     id_descriptor_to_id_vstreams[id_descriptor].insert(id_vstream);
     id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
   }
@@ -249,7 +247,7 @@ int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_desc
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_db.lastError().text());
     return 0;
   }
@@ -257,7 +255,7 @@ int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_desc
   QSqlQuery q_add_log_face(sql_db);
   if (!q_add_log_face.prepare(SQL_ADD_LOG_FACE))
   {
-    addLog("Ошибка: не удалось подготовить запрос SQL_ADD_LOG_FACE.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LOG_FACE", __FUNCTION__));
     addLog(q_add_log_face.lastError().text());
     return 0;
   }
@@ -276,7 +274,7 @@ int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_desc
   q_add_log_face.bindValue(":screenshot", file_path);
   if (!q_add_log_face.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_ADD_LOG_FACE.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LOG_FACE", __FUNCTION__));
     addLog(q_add_log_face.lastError().text());
     return 0;
   }
@@ -285,7 +283,7 @@ int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_desc
 
   if (!sql_transaction.commit())
   {
-    addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_transaction.getDatabase().lastError().text());
     return 0;
   }
@@ -299,7 +297,7 @@ int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_desc
   d.mkpath(screenshot_path + dir_path);
   QFile f(screenshot_path + file_path);
   f.open(QFile::WriteOnly);
-  f.write(screenshot.data(), screenshot.size());
+  f.write(screenshot.data(), qint64(screenshot.size()));
   f.close();
 
   return id_log;
@@ -310,9 +308,9 @@ void removeFiles(const QString& path, const QDateTime& dt)
 {
   QDir d(path);
   QFileInfoList fi_files = d.entryInfoList({"*.png", "*.jpg", "*.jpeg", "*.bmp", "*.ppm", "*.tiff"}, QDir::Files);
-  for (auto it = fi_files.begin(); it != fi_files.end(); ++it)
-    if (it->lastModified() < dt)
-      QFile::remove(it->absoluteFilePath());
+  for (auto& fi_file : fi_files)
+    if (fi_file.lastModified() < dt)
+      QFile::remove(fi_file.absoluteFilePath());
 
   QFileInfoList fi_dirs = d.entryInfoList({"*"}, QDir::Dirs | QDir::NoDotAndDotDot);
   for (auto& fi_dir : fi_dirs)
@@ -329,21 +327,21 @@ void Singleton::removeOldLogFaces()
   }
 
   QDateTime log_date = QDateTime::currentDateTime();
-  log_date = log_date.addSecs(-interval_live * 3600);
+  log_date = log_date.addSecs(qint64(-interval_live * 3600));
 
   SQLGuard sql_guard;
   QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
   QSqlQuery q_remove_logs(sql_db);
   if (!q_remove_logs.prepare(SQL_REMOVE_OLD_LOG_FACES))
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_REMOVE_OLD_LOG_FACES.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_OLD_LOG_FACES", __FUNCTION__));
     addLog(q_remove_logs.lastError().text());
     return;
   }
   q_remove_logs.bindValue(":log_date", log_date);
   if (!q_remove_logs.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_REMOVE_OLD_LOG_FACES.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_OLD_LOG_FACES", __FUNCTION__));
     addLog(q_remove_logs.lastError().text());
     return;
   }
@@ -360,7 +358,7 @@ void Singleton::addLogDeliveryEvent(DeliveryEventType delivery_type, DeliveryEve
   SqlTransaction sql_transaction(sql_guard.connectionName());
   if (!sql_transaction.inTransaction())
   {
-    addLog(QString("Ошибка: не удалось запустить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_db.lastError().text());
     return;
   }
@@ -368,7 +366,7 @@ void Singleton::addLogDeliveryEvent(DeliveryEventType delivery_type, DeliveryEve
   QSqlQuery q_add_log_delivery_event(sql_db);
   if (!q_add_log_delivery_event.prepare(SQL_ADD_LOG_DELIVERY_EVENT))
   {
-    addLog("Ошибка: не удалось подготовить запрос SQL_ADD_LOG_DELIVERY_EVENT.");
+    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LOG_DELIVERY_EVENT", __FUNCTION__));
     addLog(q_add_log_delivery_event.lastError().text());
     return;
   }
@@ -378,14 +376,14 @@ void Singleton::addLogDeliveryEvent(DeliveryEventType delivery_type, DeliveryEve
   q_add_log_delivery_event.bindValue(":id_descriptor", id_descriptor);
   if (!q_add_log_delivery_event.exec())
   {
-    addLog("Ошибка: не удалось выполнить запрос SQL_ADD_LOG_DELIVERY_EVENT.");
+    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LOG_DELIVERY_EVENT", __FUNCTION__));
     addLog(q_add_log_delivery_event.lastError().text());
     return;
   }
 
   if (!sql_transaction.commit())
   {
-    addLog(QString("Ошибка: не удалось завершить транзакцию в функции %1.").arg(__FUNCTION__));
+    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
     addLog(sql_transaction.getDatabase().lastError().text());
     return;
   }

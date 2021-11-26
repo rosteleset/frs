@@ -144,6 +144,14 @@ const QString CONF_DNN_FR_INPUT_HEIGHT = "dnn-fr-input-height";  //высота 
 const QString CONF_DNN_FR_OUTPUT_TENSOR_NAME = "dnn-fr-output-tensor-name";  //название выходного тензора
 const QString CONF_DNN_FR_OUTPUT_SIZE = "dnn-fr-output-size";  //размер массива результата инференса
 
+//различного рода сообщения
+const QString ERROR_SQL_START_TRANSACTION_IN_FUNCTION = "Ошибка: не удалось запустить транзакцию в функции %1.";
+const QString ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION = "Ошибка: не удалось завершить транзакцию в функции %1.";
+const QString ERROR_SQL_PREPARE = QStringLiteral("Ошибка: не удалось подготовить запрос %1.");
+const QString ERROR_SQL_EXEC = QStringLiteral("Ошибка: не удалось выполнить запрос %1.");
+const QString ERROR_SQL_PREPARE_IN_FUNCTION = QStringLiteral("Ошибка: не удалось подготовить запрос %1 в функции %2.");
+const QString ERROR_SQL_EXEC_IN_FUNCTION = QStringLiteral("Ошибка: не удалось выполнить запрос %1 в функции %2.");
+
 //SQL запросы
 const QString SQL_GET_CURRENT_TIME_POINT = "select unix_timestamp(current_timestamp) current_time_point";
 const QString SQL_GET_COMMON_SETTINGS = "select *, unix_timestamp(time_point) unix_time_point from common_settings";

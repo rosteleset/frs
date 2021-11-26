@@ -49,8 +49,6 @@ enum FaceClassIndexes
 {
   FACE_NONE = -1,
   FACE_NORMAL = 0,
-  FACE_WITH_MASK = 1,
-  FACE_WITH_SUNGLASSES = 2
 };
 
 //для теста
@@ -120,7 +118,6 @@ struct TaskConfig;
 
 struct RegisterDescriptorResponse
 {
-  int id_vstream = 0;
   int id_descriptor = 0;
   QString comments = "";  //комментарии к выполнению запроса
   cv::Mat face_image;
@@ -138,11 +135,8 @@ public:
   void addTask(const shared_ptr<TaskData>& task_data, double delayToRun);
   void addPermanentTasks();
 
-  //monitoring
-  mutex mtx_monitoring;
-  QHash<int, Wt::Http::Client*> id_vstream_to_http_client;
-
-  void printCounters()
+  //для теста
+  /*void printCounters()
   {
     //scope for lock mutex
     Counters qq;
@@ -151,8 +145,8 @@ public:
       qq = counters;
     }
 
-    //для теста
-    /*cout << "Global created tasks: " << qq.g_create_task_count << "\n";
+
+    cout << "Global created tasks: " << qq.g_create_task_count << "\n";
     cout << "Global destroyed tasks: " << qq.g_destroy_task_count << "\n";
     cout << "Global enqueued tasks: " << qq.g_enqueue_task_count << "\n";
     cout << "Global dequeued tasks: " << qq.g_dequeue_task_count << "\n";
@@ -160,8 +154,8 @@ public:
     cout << "Destroyed tasks: " << qq.destroy_task_count << "\n";
     cout << "Enqueued tasks: " << qq.enqueue_task_count << "\n";
     cout << "Dequeued tasks: " << qq.dequeue_task_count << "\n";
-    cout << "--------------------------\n";*/
-  }
+    cout << "--------------------------\n";
+  }*/
 
 private:
   struct WorkerTaskData
@@ -218,7 +212,7 @@ private:
   void schedulerThread();
   void workerThread();
   void runWorkerTask(const shared_ptr<TaskData>& task_data, TaskConfig& task_config);
-  void handleHttpScreenshotReponse(Wt::AsioWrapper::error_code ec, const Wt::Http::Message& response,
+  void handleHttpScreenshotResponse(Wt::AsioWrapper::error_code ec, const Wt::Http::Message& response,
     Wt::Http::Client* client, TaskInfo task_info, int max_error_count, int retry_pause);
   void handleHttpDeliveryEventResponse(Wt::AsioWrapper::error_code ec, const Wt::Http::Message& response,
     Wt::Http::Client* client, DeliveryEventType delivery_type, int id_vstream, int descriptor);
