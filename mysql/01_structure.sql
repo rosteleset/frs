@@ -1,9 +1,3 @@
--- MySQL dump 10.13  Distrib 8.0.26, for Linux (x86_64)
---
--- Host: faceid.lanta.me    Database: db_frs
--- ------------------------------------------------------
--- Server version	8.0.26-0ubuntu0.20.04.2
-
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;

@@ -92,9 +92,9 @@ $ sudo docker pull nvcr.io/nvidia/tritonserver:21.05-py3
 ```
 ## Создание TensorRT планов моделей нейронных сетей
 В TIS для инференса мы используем TensorRT планы, полученные из моделей нейронных сетей в формате ONNX (Open Neural Network Exchange). На данный момент FRS использует в работе три модели:
-- **scrfd** - предназначена для поиска лиц на изображении. [Ссылка](https://github.com/deepinsight/insightface/tree/master/detection/scrfd) на проект. Путь к файлу: *~/frs/opt/tensorrt_plans/scrfd/scrfd_10g_bnkps.onnx*
-- **genet** - предназначена для определения наличия на лице маски или тёмных очков. За основу взят [этот](https://github.com/idstcv/GPU-Efficient-Networks) проект. Модель получена путем "дообучения" (transfer learning) на трех классах: открытое лицо, лицо в маске, лицо в тёмных очках. Путь к файлу: *~/frs/opt/tensorrt_plans/genet/genet_small_custom_ft.onnx*
-- **arcface** - предназначена для вычисления биометрического шаблона лица. [Ссылка](https://github.com/deepinsight/insightface/tree/master/recognition/arcface_torch) на проект.  Ссылка для скачивания на [файл](https://drive.google.com/file/d/1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP/view?usp=sharing) в формате ONNX. После загрузки файл *glint360k_r50.onnx* поместить в директорию *~/frs/opt/tensorrt_plans/arcface/*
+- **scrfd** - предназначена для поиска лиц на изображении. [Ссылка](https://github.com/deepinsight/insightface/tree/master/detection/scrfd) на проект. Путь к файлу: */opt/frs/plan_source/scrfd/scrfd_10g_bnkps.onnx*
+- **genet** - предназначена для определения наличия на лице маски или тёмных очков. За основу взят [этот](https://github.com/idstcv/GPU-Efficient-Networks) проект. Модель получена путем "дообучения" (transfer learning) на трех классах: открытое лицо, лицо в маске, лицо в тёмных очках. Путь к файлу: */opt/frs/plan_source/genet/genet_small_custom_ft.onnx*
+- **arcface** - предназначена для вычисления биометрического шаблона лица. [Ссылка](https://github.com/deepinsight/insightface/tree/master/recognition/arcface_torch) на проект.  Ссылка для скачивания на [файл](https://drive.google.com/file/d/1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP/view?usp=sharing) в формате ONNX. После загрузки файл *glint360k_r50.onnx* поместить в директорию */opt/frs/plan_source/arcface/*
 
 Для создания файлов с TensorRT планами будем использовать контейнер:
 ```bash
@@ -104,7 +104,7 @@ $ sudo docker run --gpus all -it --rm -v/opt/frs/plan_source:/plan_source nvcr.i
 #### Создание TensorRT плана scrfd
 Внутри контейнера:
 ```bash
-$ cd /plan_source/arcface
+$ cd /plan_source/scrfd
 $ trtexec --onnx=scrfd_10g_bnkps.onnx --saveEngine=model.plan --shapes=input.1:1x3x320x320 --workspace=1024
 ```
 Созданный файл *model.plan* поместить в папку */opt/frs/model_repository/scrfd/1/*
