@@ -1,13 +1,15 @@
-#include <Wt/WServer.h>
-
 #include <utility>
 
 #include "singleton.h"
 #include "frs_api.h"
+#include "tasks.h"
+#include "crow/TinySHA1.hpp"
+
+using namespace std;
 
 namespace
 {
-  QReadWriteLock lock_log;
+  mutex mtx_log;
 }
 
 double Singleton::cosineDistance(const FaceDescriptor& fd1, const FaceDescriptor& fd2)
@@ -18,201 +20,96 @@ double Singleton::cosineDistance(const FaceDescriptor& fd1, const FaceDescriptor
   return fd1.dot(fd2);
 }
 
-//Обработка транзакции
-
-SqlTransaction::SqlTransaction(QString connection_name, bool do_start)
-  : conn_name(std::move(connection_name))
-{
-  if (do_start)
-  {
-    QSqlDatabase db = QSqlDatabase::database(conn_name);
-    in_transaction = db.transaction();
-  }
-}
-
-SqlTransaction::~SqlTransaction()
-{
-  rollback();
-}
-
-bool SqlTransaction::start()
-{
-  if (!in_transaction)
-  {
-    QSqlDatabase db = QSqlDatabase::database(conn_name);
-    in_transaction = db.transaction();
-  }
-
-  return in_transaction;
-}
-
-bool SqlTransaction::commit()
-{
-  if (in_transaction)
-  {
-    in_transaction = false;
-    QSqlDatabase db = QSqlDatabase::database(conn_name);
-    return db.commit();
-  } else
-    return false;
-}
-
-bool SqlTransaction::rollback()
-{
-  if (in_transaction)
-  {
-    in_transaction = false;
-    QSqlDatabase db = QSqlDatabase::database(conn_name);
-    return db.rollback();
-  } else
-    return true;
-}
-
-bool SqlTransaction::inTransaction() const
-{
-  return in_transaction;
-}
-
-QSqlDatabase SqlTransaction::getDatabase()
-{
-  return QSqlDatabase::database(conn_name);
-}
-
 Singleton::Singleton()
 {
   std::srand(std::clock());
-  id_descriptor_to_data.setSharable(false);
-  id_vstream_to_id_descriptors.setSharable(false);
-  id_descriptor_to_id_vstreams.setSharable(false);
 }
 
 Singleton::~Singleton()
 {
-  task_scheduler.reset();
-  task_scheduler = nullptr;
-  sql_pool.reset();
-  sql_pool = nullptr;
-  addLog("Закрытие программы.");
+  sql_client.reset();
+  sql_client = nullptr;
+  saveDNNStatsData();
 }
 
 //логи
-void Singleton::addLog(const QString &msg) const
+void Singleton::addLog(const String &msg) const
 {
-  QWriteLocker locker(&lock_log);
+  scoped_lock locker(mtx_log);
 
   //выводим лог в консоль
-  QDateTime dt = QDateTime::currentDateTime();
-  QString s_log = QString("[%1] %2\n").arg(dt.toString("HH:mm:ss.zzz"), msg);
-  cout << qUtf8Printable(s_log);
+  auto dt = absl::Now();
+  auto s_log = absl::Substitute("[$0] $1\n", absl::FormatTime("%H:%M:%S", dt, absl::LocalTimeZone()), msg);
+  cout << s_log;
 
   //пишем лог в конец файла
-  QDir d;
-  d.mkpath(logs_path);
-  QString f_name = QString("%1/%2.txt").arg(logs_path, dt.toString("yyyy-MM-dd"));
-  QFile f(f_name);
-  f.open(QFile::WriteOnly | QFile::Append | QFile::Text);
-  f.write(s_log.toUtf8());
-  f.close();
+  std::filesystem::path path = logs_path / (absl::FormatTime("%Y-%m-%d", dt, absl::LocalTimeZone()) + ".log");
+  std::filesystem::create_directories(logs_path);
+  std::fstream f(path, std::ios::app);
+  f << s_log;
 }
 
 void Singleton::loadData()
 {
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-  QSqlQuery q_face_descriptors(sql_db);
-  if (!q_face_descriptors.prepare(SQL_GET_FACE_DESCRIPTORS))
+  try
   {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTORS", __FUNCTION__));
-    addLog(q_face_descriptors.lastError().text());
+    auto mysql_session = sql_client->getSession();
+    auto result = mysql_session.sql(SQL_GET_FACE_DESCRIPTORS)
+      .bind(id_worker)
+      .execute();
+    for (auto row : result)
+    {
+      int id_descriptor = row[0];
+      FaceDescriptor fd;
+      fd.create(1, int(descriptor_size), CV_32F);
+      std::string s = row[1].get<std::string>();
+      std::memcpy(fd.data, s.data(), s.size());
+      double norm_l2 = cv::norm(fd, cv::NORM_L2);
+      if (norm_l2 <= 0.0)
+        norm_l2 = 1.0;
+      fd = fd / norm_l2;
+      id_descriptor_to_data[id_descriptor] = std::move(fd);
+    }
+  } catch (const mysqlx::Error& err)
+  {
+    addLog(absl::Substitute(ERROR_SQL_EXEC_IN_FUNCTION, "SQL_GET_FACE_DESCRIPTORS", __FUNCTION__));
+    addLog(err.what());
     return;
-  }
-  q_face_descriptors.bindValue(":id_worker", id_worker);
-  if (!q_face_descriptors.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTORS", __FUNCTION__));
-    addLog(q_face_descriptors.lastError().text());
-    return;
-  }
-
-  while (q_face_descriptors.next())
-  {
-    int id_descriptor = q_face_descriptors.value("id_descriptor").toInt();
-    FaceDescriptor fd;
-    fd.create(1, int(descriptor_size), CV_32F);
-    QByteArray ba = q_face_descriptors.value("descriptor_data").toByteArray();
-    std::memcpy(fd.data, ba.data(), ba.size());
-    double norm_l2 = cv::norm(fd, cv::NORM_L2);
-    if (norm_l2 <= 0.0)
-      norm_l2 = 1.0;
-    fd = fd / norm_l2;
-    id_descriptor_to_data[id_descriptor] = std::move(fd);
   }
 }
 
 int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const cv::Mat& f_img)
 {
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = sql_client->getSession();
+  int id_descriptor{};
+  try
   {
-    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_db.lastError().text());
-    return {};
-  }
+    mysql_session.startTransaction();
 
-  //сохраняем дескриптор и изображение
-  QSqlQuery q_add_face_descriptor(sql_db);
-  if (!q_add_face_descriptor.prepare(SQL_ADD_FACE_DESCRIPTOR))
-  {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_FACE_DESCRIPTOR", __FUNCTION__));
-    addLog(q_add_face_descriptor.lastError().text());
-    return {};
-  }
-  q_add_face_descriptor.bindValue(":descriptor_data",
-    QByteArray((char*)fd.data, int(descriptor_size * sizeof(float))), QSql::In | QSql::Binary);
-  if (!q_add_face_descriptor.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_FACE_DESCRIPTOR", __FUNCTION__));
-    addLog(q_add_face_descriptor.lastError().text());
-    return {};
-  }
-  int id_descriptor = q_add_face_descriptor.lastInsertId().toInt();
+    //сохраняем дескриптор и изображение
+    id_descriptor = static_cast<int>(mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
+      .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
+      .execute()
+      .getAutoIncrementValue());
 
-  QSqlQuery q_add_descriptor_image(sql_db);
-  if (!q_add_descriptor_image.prepare(SQL_ADD_DESCRIPTOR_IMAGE))
-  {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_DESCRIPTOR_IMAGE", __FUNCTION__ ));
-    addLog(q_add_descriptor_image.lastError().text());
-    return {};
-  }
-  q_add_descriptor_image.bindValue(":id_descriptor", id_descriptor);
-  q_add_descriptor_image.bindValue(":mime_type", "image/jpeg");
-  std::vector<uchar> buff_;
-  cv::imencode(".jpg", f_img, buff_);
-  q_add_descriptor_image.bindValue(":face_image", QByteArray((char*)buff_.data(), int(buff_.size())), QSql::In | QSql::Binary);
-  if (!q_add_descriptor_image.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_DESCRIPTOR_IMAGE", __FUNCTION__));
-    addLog(q_add_descriptor_image.lastError().text());
-    return {};
-  }
+    std::vector<uchar> buff_;
+    cv::imencode(".jpg", f_img, buff_);
+    mysql_session.sql(SQL_ADD_DESCRIPTOR_IMAGE)
+      .bind(id_descriptor)
+      .bind("image/jpeg")
+      .bind(mysqlx::bytes(buff_.data(), buff_.size()))
+      .execute();
 
-  QSqlQuery q_link_descriptor_vstream(sql_db);
-  if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
-  {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
-    addLog(q_link_descriptor_vstream.lastError().text());
-    return {};
-  }
-  q_link_descriptor_vstream.bindValue(":id_descriptor", id_descriptor);
-  q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-  q_link_descriptor_vstream.exec();
+    mysql_session.sql(SQL_ADD_LINK_DESCRIPTOR_VSTREAM)
+      .bind(id_descriptor)
+      .bind(id_vstream)
+      .execute();
 
-  if (!sql_transaction.commit())
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_transaction.getDatabase().lastError().text());
+    mysql_session.rollback();
+    addLog(err.what());
     return {};
   }
 
@@ -222,7 +119,7 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
     if (norm_l2 <= 0.0)
       norm_l2 = 1.0;
 
-    lock_guard<mutex> lock(mtx_task_config);
+    WriteLocker lock(mtx_task_config);
     id_descriptor_to_data[id_descriptor] = fd.clone() / norm_l2;
     id_descriptor_to_id_vstreams[id_descriptor].insert(id_vstream);
     id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
@@ -231,160 +128,230 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
   return id_descriptor;
 }
 
-int Singleton::addLogFace(int id_vstream, const QDateTime& log_date, int id_descriptor, double quality,
+std::tuple<int, String, String> Singleton::addLogFace(int id_vstream, DateTime log_date, int id_descriptor, double quality,
    const cv::Rect& face_rect, const string& screenshot) const
 {
-  QString file_name = QCryptographicHash::hash((log_date.toString("yyyy-MM-dd_hh:mm:ss:zzz") +
-    QString::number(id_vstream)).toUtf8(), QCryptographicHash::Md5).toHex().toLower();
-  QString dir_path = QString("/%1/%2/%3").arg(file_name[0]).arg(file_name[1]).arg(file_name[2]);
-  QString file_path = QString("%1/%2.jpg").arg(dir_path, file_name);
+  sha1::SHA1 s;
+  auto hash_name = absl::StrCat(absl::FormatTime(log_date), id_vstream);
+  s.processBytes(hash_name.data(), hash_name.size());
+  uint8_t digest[20];
+  s.getDigestBytes(digest);
+  hash_name = absl::BytesToHexString(std::string((const char *)(digest), 16));
+  auto url_part = absl::Substitute("$0/$1/$2/$3", hash_name[0], hash_name[1], hash_name[2], hash_name);
+  String image_ext = ".jpg";
+  auto file_path = screenshot_path / (url_part + image_ext);
 
   //для теста
   //auto tt0 = std::chrono::steady_clock::now();
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = sql_client->getSession();
+  int id_log;
+  try
   {
-    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_db.lastError().text());
-    return 0;
-  }
+    mysql_session.startTransaction();
 
-  QSqlQuery q_add_log_face(sql_db);
-  if (!q_add_log_face.prepare(SQL_ADD_LOG_FACE))
+    id_log = static_cast<int>(mysql_session.sql(SQL_ADD_LOG_FACE)
+      .bind(id_vstream)
+      .bind(absl::FormatTime(API::DATETIME_FORMAT_LOG_FACES, log_date, absl::LocalTimeZone()))
+      .bind(id_descriptor > 0 ? mysqlx::Value(id_descriptor) : mysqlx::nullvalue)
+      .bind(quality)
+      .bind(url_part + image_ext)
+      .bind(face_rect.x)
+      .bind(face_rect.y)
+      .bind(face_rect.width)
+      .bind(face_rect.height)
+      .execute()
+      .getAutoIncrementValue());
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LOG_FACE", __FUNCTION__));
-    addLog(q_add_log_face.lastError().text());
-    return 0;
-  }
-
-  q_add_log_face.bindValue(":id_vstream", id_vstream);
-  q_add_log_face.bindValue(":log_date", log_date);
-  if (id_descriptor > 0)
-    q_add_log_face.bindValue(":id_descriptor", id_descriptor);
-  else
-    q_add_log_face.bindValue("id_descriptor", QVariant());
-  q_add_log_face.bindValue(":quality", quality);
-  q_add_log_face.bindValue(":face_left", face_rect.x);
-  q_add_log_face.bindValue(":face_top", face_rect.y);
-  q_add_log_face.bindValue(":face_width", face_rect.width);
-  q_add_log_face.bindValue(":face_height", face_rect.height);
-  q_add_log_face.bindValue(":screenshot", file_path);
-  if (!q_add_log_face.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LOG_FACE", __FUNCTION__));
-    addLog(q_add_log_face.lastError().text());
-    return 0;
-  }
-
-  int id_log = q_add_log_face.lastInsertId().toInt();
-
-  if (!sql_transaction.commit())
-  {
-    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_transaction.getDatabase().lastError().text());
-    return 0;
+    mysql_session.rollback();
+    addLog(err.what());
+    return {};
   }
 
   //для теста
   //auto tt1 = std::chrono::steady_clock::now();
-  //cout << "__write log_face time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
+  //cout << "____write log_face time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
 
   //пишем файл со скриншотом
-  QDir d;
-  d.mkpath(screenshot_path + dir_path);
-  QFile f(screenshot_path + file_path);
-  f.open(QFile::WriteOnly);
-  f.write(screenshot.data(), qint64(screenshot.size()));
-  f.close();
+  std::filesystem::create_directories(file_path.parent_path());
+  ofstream f(file_path);
+  f << screenshot;
 
-  return id_log;
-}
+  //для теста
+  //auto tt2 = std::chrono::steady_clock::now();
+  //cout << "____write screenshot time: " << std::chrono::duration<double, std::milli>(tt2 - tt1).count() << " ms" << endl;
 
-//рекурсивная функция для удаления ненужных скриншотов
-void removeFiles(const QString& path, const QDateTime& dt)
-{
-  QDir d(path);
-  QFileInfoList fi_files = d.entryInfoList({"*.png", "*.jpg", "*.jpeg", "*.bmp", "*.ppm", "*.tiff"}, QDir::Files);
-  for (auto& fi_file : fi_files)
-    if (fi_file.lastModified() < dt)
-      QFile::remove(fi_file.absoluteFilePath());
-
-  QFileInfoList fi_dirs = d.entryInfoList({"*"}, QDir::Dirs | QDir::NoDotAndDotDot);
-  for (auto& fi_dir : fi_dirs)
-    removeFiles(fi_dir.absoluteFilePath(), dt);
-}
-
-void Singleton::removeOldLogFaces()
-{
-  float interval_live;
-  //scope for lock mutex
-  {
-    lock_guard<mutex> lock(mtx_task_config);
-    interval_live = task_config.conf_params[CONF_LOG_FACES_LIVE_INTERVAL].value.toFloat();
-  }
-
-  QDateTime log_date = QDateTime::currentDateTime();
-  log_date = log_date.addSecs(qint64(-interval_live * 3600));
-
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-  QSqlQuery q_remove_logs(sql_db);
-  if (!q_remove_logs.prepare(SQL_REMOVE_OLD_LOG_FACES))
-  {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_OLD_LOG_FACES", __FUNCTION__));
-    addLog(q_remove_logs.lastError().text());
-    return;
-  }
-  q_remove_logs.bindValue(":log_date", log_date);
-  if (!q_remove_logs.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_OLD_LOG_FACES", __FUNCTION__));
-    addLog(q_remove_logs.lastError().text());
-    return;
-  }
-
-  //удаляем уже ненужные файлы со скриншотами
-  removeFiles(screenshot_path, log_date);
+  return {id_log, hash_name, http_server_screenshot_url + url_part + image_ext};
 }
 
 void Singleton::addLogDeliveryEvent(DeliveryEventType delivery_type, DeliveryEventResult delivery_result, int id_vstream,
   int id_descriptor) const
 {
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = sql_client->getSession();
+  try
   {
-    addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_db.lastError().text());
+    mysql_session.startTransaction();
+
+    mysql_session.sql(SQL_ADD_LOG_DELIVERY_EVENT)
+      .bind(static_cast<int>(delivery_type))
+      .bind(static_cast<int>(delivery_result))
+      .bind(id_vstream)
+      .bind(id_descriptor)
+      .execute();
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
+  {
+    mysql_session.rollback();
+    addLog(err.what());
     return;
+  }
+}
+
+void Singleton::addPermanentTasks() const
+{
+  runtime->background_executor()->submit(removeOldLogFaces, false);
+}
+
+String Singleton::variantToString(const Variant& v)
+{
+  if (std::holds_alternative<bool>(v))
+    return std::to_string(static_cast<int>(std::get<bool>(v)));
+
+  if (std::holds_alternative<int>(v))
+    return std::to_string(std::get<int>(v));
+
+  if (std::holds_alternative<double>(v))
+    return std::to_string(std::get<double>(v));
+
+  if (std::holds_alternative<String>(v))
+    return std::get<String>(v);
+
+  return {};
+}
+
+int Singleton::addSGroupFaceDescriptor(int id_sgroup, const FaceDescriptor& fd, const cv::Mat& f_img)
+{
+  auto mysql_session = sql_client->getSession();
+  int id_descriptor{};
+  try
+  {
+    mysql_session.startTransaction();
+
+    //сохраняем дескриптор и изображение
+    id_descriptor = static_cast<int>(mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
+      .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
+      .execute()
+      .getAutoIncrementValue());
+
+    std::vector<uchar> buff_;
+    cv::imencode(".jpg", f_img, buff_);
+    mysql_session.sql(SQL_ADD_DESCRIPTOR_IMAGE)
+      .bind(id_descriptor)
+      .bind("image/jpeg")
+      .bind(mysqlx::bytes(buff_.data(), buff_.size()))
+      .execute();
+
+    mysql_session.sql(SQL_ADD_LINK_DESCRIPTOR_SGROUP)
+      .bind(id_descriptor)
+      .bind(id_sgroup)
+      .execute();
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
+  {
+    mysql_session.rollback();
+    addLog(err.what());
+    return {};
   }
 
-  QSqlQuery q_add_log_delivery_event(sql_db);
-  if (!q_add_log_delivery_event.prepare(SQL_ADD_LOG_DELIVERY_EVENT))
+  //scope for lock mutex
   {
-    addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LOG_DELIVERY_EVENT", __FUNCTION__));
-    addLog(q_add_log_delivery_event.lastError().text());
-    return;
-  }
-  q_add_log_delivery_event.bindValue(":delivery_type", static_cast<int>(delivery_type));
-  q_add_log_delivery_event.bindValue(":delivery_result", static_cast<int>(delivery_result));
-  q_add_log_delivery_event.bindValue(":id_vstream", id_vstream);
-  q_add_log_delivery_event.bindValue(":id_descriptor", id_descriptor);
-  if (!q_add_log_delivery_event.exec())
-  {
-    addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LOG_DELIVERY_EVENT", __FUNCTION__));
-    addLog(q_add_log_delivery_event.lastError().text());
-    return;
+    double norm_l2 = cv::norm(fd, cv::NORM_L2);
+    if (norm_l2 <= 0.0)
+      norm_l2 = 1.0;
+
+    WriteLocker lock(mtx_task_config);
+    id_descriptor_to_data[id_descriptor] = fd.clone() / norm_l2;
+    id_sgroup_to_id_descriptors[id_sgroup].insert(id_descriptor);
   }
 
-  if (!sql_transaction.commit())
+  return id_descriptor;
+}
+
+//для сбора статистики инференса
+void Singleton::loadDNNStatsData()
+{
+  auto file_name = working_path + "/dnn_stats_data.json";
+  error_code ec;
+  const auto f_size = std::filesystem::file_size(file_name, ec);
+  if (!ec && f_size > 0)
   {
-    addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    addLog(sql_transaction.getDatabase().lastError().text());
-    return;
+    HashMap<int, DNNStatsData> dnn_stats_data_copy;
+    string s_data(f_size, '\0');
+    ifstream f(file_name, std::ios::in | std::ios::binary);
+    f.read(s_data.data(), static_cast<streamsize>(f_size));
+    f.close();
+    crow::json::rvalue json = crow::json::load(s_data);
+    if (json.has("data") && json["data"].t() == crow::json::type::List)
+    {
+      auto data = json["data"];
+      auto list_data = data.lo();
+      for (auto & item : list_data)
+        if (item.has("id_vstream") && item["id_vstream"].t() == crow::json::type::Number
+          && item.has("fd_count") && item["fd_count"].t() == crow::json::type::Number
+          && item.has("fc_count") && item["fc_count"].t() == crow::json::type::Number
+          && item.has("fr_count") && item["fr_count"].t() == crow::json::type::Number)
+        {
+          dnn_stats_data_copy[static_cast<int>(item["id_vstream"].i())] = DNNStatsData{
+            static_cast<int>(item["fd_count"].i()),
+            static_cast<int>(item["fc_count"].i()),
+            static_cast<int>(item["fr_count"].i())
+          };
+        }
+    }
+
+    //scope for locked mutex
+    {
+      scoped_lock lock(mtx_stats);
+      dnn_stats_data = dnn_stats_data_copy;
+    }
   }
+}
+
+//сохраняем данные статистики инференса в файл
+void Singleton::saveDNNStatsData()
+{
+  HashMap<int, DNNStatsData> dnn_stats_data_copy;
+
+  //scope for lock mutex
+  {
+    scoped_lock lock(mtx_stats);
+    dnn_stats_data_copy = dnn_stats_data;
+  }
+
+  DNNStatsData all_data;
+  crow::json::wvalue::list list_data;
+  for (const auto& item : dnn_stats_data_copy)
+  {
+    all_data.fd_count += item.second.fd_count;
+    all_data.fc_count += item.second.fc_count;
+    all_data.fr_count += item.second.fr_count;
+    list_data.push_back({
+      {"id_vstream", item.first},
+      {"fd_count", item.second.fd_count},
+      {"fc_count", item.second.fc_count},
+      {"fr_count", item.second.fr_count},
+    });
+  }
+  crow::json::wvalue  json{
+    {"all", {{"fd_count", all_data.fd_count}, {"fc_count", all_data.fc_count}, {"fr_count", all_data.fr_count}}},
+    {"data", list_data}
+  };
+
+  ofstream f(working_path + "/dnn_stats_data.json");
+  f << json.dump();
 }

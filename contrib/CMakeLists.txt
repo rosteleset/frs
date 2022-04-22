@@ -1,0 +1,5 @@
+add_subdirectory (abseil-cpp-cmake)
+add_subdirectory (concurrencpp-cmake)
+add_subdirectory (cpr-cmake)
+add_subdirectory (mysql-connector-cpp-cmake)
+add_subdirectory (crow-cmake)

@@ -1,1 +1,1 @@
-apidoc -i ../ -f ".*\\.h$" -f ".*\\.cpp$" -o ../www/apidoc
+apidoc -i ../ -f ".*\\.h$" -f ".*\\.cpp$" -o ../www/apidoc -p

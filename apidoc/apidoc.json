@@ -16,8 +16,19 @@
     "removeFaces",
     "deleteFaces",
     "listAllFaces",
+    "addSpecialGroup",
+    "updateSpecialGroup",
+    "deleteSpecialGroup",
+    "processFrame",
+    "saveDnnStatsData",
+    "sgRegisterFace",
+    "sgDeleteFaces",
+    "sgListFaces",
+    "sgUpdateGroup",
+    "sgRenewToken",
     "FRS-->Host",
-    "faceRecognized"
+    "faceRecognized",
+    "sgFaceRecognized"
   ],
   "header": {
     "title": "Общая информация",

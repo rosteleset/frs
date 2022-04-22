@@ -1,206 +1,245 @@
 #include "frs_api.h"
-#include <Wt/WServer.h>
+#include "tasks.h"
+#include "absl/strings/escaping.h"
 
-bool ApiResource::checkInputParam(const Wt::Json::Object& json, Wt::Http::Response& response,
-  const char* input_param)
+#include "crow/json.h"
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
+
+using namespace std;
+
+namespace
 {
-  if (json.get(input_param).isNull())
+  int jsonInteger(const crow::json::rvalue& v, const string& key)
   {
-    Wt::Json::Object json_error;
+    if (!v.has(key))
+      return {};
+
+    if (v[key].t() == crow::json::type::Number || v[key].t() == crow::json::type::String)
+      try
+      {
+        return static_cast<int>(v[key]);
+      } catch(...)
+      {
+        //ничего не делаем
+      }
+
+    return {};
+  }
+
+  int jsonInteger(const crow::json::rvalue& v)
+  {
+    if (v.t() == crow::json::type::Number)
+      return static_cast<int>(v);
+
+    if (v.t() == crow::json::type::String)
+      try
+      {
+        return static_cast<int>(v);
+      } catch(...)
+      {
+        //ничего не делаем
+      }
+
+    return {};
+  }
+
+  String jsonString(const crow::json::rvalue& v, const string& key)
+  {
+    if (!v.has(key))
+      return {};
+
+    if (v[key].t() == crow::json::type::String || v[key].t() == crow::json::type::True || v[key].t() == crow::json::type::False
+      || v[key].t() == crow::json::type::Number)
+      return string(v[key]);
+    else
+      return {};
+  }
+}
+
+ApiService::~ApiService()
+{
+  auto& singleton = Singleton::instance();
+  singleton.is_working.store(false, std::memory_order_relaxed);
+
+  singleton.runtime->timer_queue()->shutdown();
+  singleton.runtime->background_executor()->shutdown();
+  singleton.runtime->thread_pool_executor()->shutdown();
+
+  singleton.runtime.reset();
+  singleton.runtime = nullptr;
+
+  singleton.sql_client.reset();
+  singleton.sql_client = nullptr;
+
+  singleton.addLog("Завершение работы FRS.");
+}
+
+bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param)
+{
+  if (!json.has(input_param))
+  {
+    crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_MISSING_PARAMETER.arg(input_param));
-    response.setStatus(code);
-    response.out() << Wt::Json::serialize(json_error, API::INDENT);
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_MISSING_PARAMETER, input_param);
+    response.code = code;
+    response.body = json_error.dump();
+    return false;
+  }
+  if (json[input_param].t() == crow::json::type::Null)
+  {
+    crow::json::wvalue json_error;
+    int code = API::CODE_ERROR;
+    json_error[API::P_CODE] = code;
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_NULL_PARAMETER, input_param);
+    response.code = code;
+    response.body = json_error.dump();
     return false;
   }
   bool is_empty = false;
-  if (json.get(input_param).type() == Wt::Json::Type::Array)
-    if (Wt::Json::Array(json.get(input_param)).empty())
-      is_empty = true;
-  if (json.get(input_param).type() == Wt::Json::Type::Bool
-      || json.get(input_param).type() == Wt::Json::Type::Number
-      || json.get(input_param).type() == Wt::Json::Type::String)
-    is_empty = QString::fromStdString(json.get(input_param).toString()).trimmed().isEmpty();
+  if (json[input_param].t() == crow::json::type::List)
+    is_empty = (json[input_param].size() == 0);
+  if (json[input_param].t() == crow::json::type::True || json[input_param].t() == crow::json::type::False
+      || json[input_param].t() == crow::json::type::Number
+      || json[input_param].t() == crow::json::type::String)
+    is_empty = String(json[input_param]).empty();
 
   if (is_empty)
   {
-    Wt::Json::Object json_error;
+    crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_EMPTY_VALUE.arg(input_param));
-    response.setStatus(code);
-    response.out() << Wt::Json::serialize(json_error, API::INDENT);
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_EMPTY_VALUE, input_param);
+    response.code = code;
+    response.body = json_error.dump();
     return false;
   }
 
   return true;
 }
 
-void ApiResource::simpleResponse(int code, Wt::Http::Response& response)
+void ApiService::simpleResponse(int code, crow::response& response)
 {
   simpleResponse(code, "", response);
 }
 
-void ApiResource::simpleResponse(int code, const QString& msg, Wt::Http::Response& response)
+void ApiService::simpleResponse(int code, const String& msg, crow::response& response)
 {
-  Wt::Json::Object json_response;
+  crow::json::wvalue json_response;
   json_response[API::P_CODE] = code;
-  json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-  json_response[API::P_MESSAGE] = msg.isEmpty() ? API::RESPONSE_MESSAGE[code] : qUtf8Printable(msg);
-  response.setStatus(code);
-  response.out() << Wt::Json::serialize(json_response, API::INDENT);
+  json_response[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+  json_response[API::P_MESSAGE] = msg.empty() ? API::RESPONSE_MESSAGE.at(code) : msg;
+  response.code = code;
+  response.body = json_response.dump();
 }
 
-void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Response& response)
+void ApiService::handleRequest(const crow::request& request, crow::response& response, const String& api_method)
 {
   Singleton& singleton = Singleton::instance();
-  if (singleton.task_scheduler == nullptr)
-    return;
 
-  response.setMimeType(API::MIME_TYPE);
-  response.setStatus(API::CODE_NO_CONTENT);
+  response.set_header(API::CONTENT_TYPE, API::MIME_TYPE);
+  response.code = API::CODE_NO_CONTENT;
 
-  if (request.continuation() != nullptr)
+  auto api_function = absl::AsciiStrToLower(api_method);
+
+  //проверка корректности структуры тела запроса (JSON)
+  auto json = crow::json::load(request.body);
+  if (!request.body.empty() && json.error())
   {
-    if (request.continuation()->data().type() == typeid(std::shared_ptr<RegisterDescriptorResponse>))
-    {
-      auto rd = Wt::cpp17::any_cast<std::shared_ptr<RegisterDescriptorResponse>>(request.continuation()->data());
-      Wt::Json::Object json_response;
-      int code = API::CODE_SUCCESS;
-      if (rd->id_descriptor > 0)
-      {
-        QByteArray face_data;
-        std::vector<uchar> buff_;
-        cv::imencode(".jpg", rd->face_image, buff_);
-        face_data = QByteArray((char*)buff_.data(), int(buff_.size()));
-        QString mime_type = "image/jpeg";
-        Wt::Json::Object json_data;
-        json_data[API::P_FACE_ID] = rd->id_descriptor;
-        json_data[API::P_FACE_LEFT] = rd->face_left;
-        json_data[API::P_FACE_TOP] = rd->face_top;
-        json_data[API::P_FACE_WIDTH] = rd->face_width;
-        json_data[API::P_FACE_HEIGHT] = rd->face_height;
-        json_data[API::P_FACE_IMAGE] = qUtf8Printable(QString("data:%1;base64,%2").arg(mime_type, face_data.toBase64().data()));
-
-        json_response[API::P_CODE] = code;
-        json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-        json_response[API::P_MESSAGE] = API::MSG_DONE;
-        json_response[API::P_DATA] = json_data;
-      } else
-      {
-        code = API::CODE_ERROR;
-        json_response[API::P_CODE] = code;
-        json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-        json_response[API::P_MESSAGE] = qUtf8Printable(rd->comments);
-      }
-
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_response, API::INDENT);
-    }
-
-    request.continuation()->setData(nullptr);
-
-    return;
-  }
-
-  QString api_function = QString::fromStdString(request.pathInfo()).toLower();
-  std::string body;
-  char buffer[4096];
-  while (request.in().read(buffer, sizeof(buffer)))
-    body.append(buffer, sizeof(buffer));
-  body.append(buffer, request.in().gcount());
-
-  Wt::Json::Object json;
-  Wt::Json::ParseError error;
-  bool is_ok = body.empty() || Wt::Json::parse(body, json, error, true);
-  if (!is_ok)
-  {
-    Wt::Json::Object json_error;
+    crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-    json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_REQUEST_STRUCTURE);
-    response.setStatus(code);
-    response.out() << Wt::Json::serialize(json_error, API::INDENT);
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
+    response.code = code;
+    response.body = json_error.dump();
     return;
   }
 
   //обработка запросов
-  if (api_function == API::ADD_STREAM.toLower())
+  if (api_function == absl::AsciiStrToLower(API::ADD_STREAM))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
-    QString url = QString::fromStdString(json.get(API::P_URL).toString().orIfNull(""));
-    QString callback_url = QString::fromStdString(json.get(API::P_CALLBACK_URL).toString().orIfNull(""));
-    singleton.addLog(API::LOG_CALL_ADD_STREAM.arg(API::ADD_STREAM, vstream_ext, url, callback_url));
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
+    String url = jsonString(json, API::P_URL);
+    String callback_url = jsonString(json, API::P_CALLBACK_URL);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_ADD_STREAM, API::ADD_STREAM, vstream_ext, url, callback_url));
 
     std::vector<int> face_ids;
-    if (!json.get(API::P_FACE_IDS).isNull() && json.get(API::P_FACE_IDS).type() != Wt::Json::Type::Array)
+    if (json.has(API::P_FACE_IDS) && json[API::P_FACE_IDS].t() != crow::json::type::Null && json[API::P_FACE_IDS].t() != crow::json::type::List)
     {
-      Wt::Json::Object json_error;
-      int code = API::CODE_NOT_ACCEPTABLE;
+      crow::json::wvalue json_error;
+      int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.value(code);
-      json_error[API::P_MESSAGE] = qUtf8Printable(API::INCORRECT_PARAMETER.arg(API::P_FACE_IDS));
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_error, API::INDENT);
+      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_FACE_IDS);
+      response.code = code;
+      response.body = json_error.dump();
       return;
     }
-    Wt::Json::Array face_ids_list = json.get(API::P_FACE_IDS).orIfNull(Wt::Json::Array());
-    for (auto&& json_value : face_ids_list)
+    auto face_ids_list = json.has(API::P_FACE_IDS) ? json[API::P_FACE_IDS] : crow::json::rvalue(crow::json::type::List);
+    if (face_ids_list.t() == crow::json::type::List)
+      for (const auto& json_value : face_ids_list)
+      {
+        int id_descriptor = jsonInteger(json_value);
+        if (id_descriptor > 0)
+          face_ids.push_back(id_descriptor);
+      }
+
+    HashMap<String, String> params;
+    if (json.has(API::P_PARAMS) && json[API::P_PARAMS].t() != crow::json::type::Null && json[API::P_PARAMS].t() != crow::json::type::List)
     {
-      int id_descriptor = json_value.toNumber().orIfNull(0);
-      if (id_descriptor > 0)
-        face_ids.push_back(id_descriptor);
+      crow::json::wvalue json_error;
+      int code = API::CODE_ERROR;
+      json_error[API::P_CODE] = code;
+      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
+      response.code = code;
+      response.body = json_error.dump();
+      return;
     }
 
-    QHash<QString, QString> params;
-    if (!json.get(API::P_PARAMS).isNull() && json.get(API::P_PARAMS).type() != Wt::Json::Type::Array)
-    {
-      Wt::Json::Object json_error;
-      int code = API::CODE_NOT_ACCEPTABLE;
-      json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.value(code);
-      json_error[API::P_MESSAGE] = qUtf8Printable(API::INCORRECT_PARAMETER.arg(API::P_PARAMS));
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_error, API::INDENT);
-      return;
-    }
-    Wt::Json::Array params_list = json.get(API::P_PARAMS).orIfNull(Wt::Json::Array());
+    auto params_list = json.has(API::P_PARAMS) ? json[API::P_PARAMS] : crow::json::rvalue(crow::json::type::List);
     bool is_ok2 = true;
-    for (auto&& json_value : params_list)
-      if (json_value.type() == Wt::Json::Type::Object)
-      {
-        Wt::Json::Object json_object = json_value;
-        QString param_name = QString::fromStdString(json_object.get(API::P_PARAM_NAME).toString().orIfNull(""));
-        QString param_value = QString::fromStdString(json_object.get(API::P_PARAM_VALUE).toString().orIfNull(""));
-        if (!param_name.isEmpty())
-          params[param_name] = param_value;
-        else
+    if (params_list.t() == crow::json::type::List)
+    {
+      for (const auto& json_value : params_list)
+        if (json_value.t() == crow::json::type::Object)
+        {
+          auto param_name = jsonString(json_value, API::P_PARAM_NAME);
+          auto param_value = jsonString(json_value, API::P_PARAM_VALUE);
+          if (!param_name.empty())
+            params[param_name] = param_value;
+          else
+          {
+            is_ok2 = false;
+            break;
+          }
+        } else
         {
           is_ok2 = false;
           break;
         }
-      } else
-      {
-        is_ok2 = false;
-        break;
-      }
+    }
 
     if (!is_ok2)
     {
-      Wt::Json::Object json_error;
-      int code = API::CODE_NOT_ACCEPTABLE;
+      crow::json::wvalue json_error;
+      int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.value(code);
-      json_error[API::P_MESSAGE] = qUtf8Printable(API::INCORRECT_PARAMETER.arg(API::P_PARAMS));
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_error, API::INDENT);
+      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
+      response.code = code;
+      response.body = json_error.dump();
       return;
     }
 
@@ -211,7 +250,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function == API::MOTION_DETECTION.toLower())
+  if (api_function == absl::AsciiStrToLower(API::MOTION_DETECTION))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -219,104 +258,171 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     if (!checkInputParam(json, response, API::P_START))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
-    bool is_start = (QString::fromStdString(json.get(API::P_START).toString().orIfNull("")) == "t");
-    singleton.addLog(API::LOG_CALL_MOTION_DETECTION.arg(API::MOTION_DETECTION, vstream_ext).arg(is_start));
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
+    bool is_start = (jsonString(json, API::P_START) == "t");
+    singleton.addLog(absl::Substitute(API::LOG_CALL_MOTION_DETECTION, API::MOTION_DETECTION, vstream_ext, is_start));
 
     motionDetection(vstream_ext, is_start);
-    response.setStatus(API::CODE_NO_CONTENT);
+    response.code = API::CODE_NO_CONTENT;
 
     return;
   }
 
-  if (api_function == API::BEST_QUALITY.toLower())
+  if (api_function == absl::AsciiStrToLower(API::BEST_QUALITY))
   {
-    if (json.get(API::P_LOG_FACES_ID).isNull() && (json.get(API::P_STREAM_ID).isNull() || json.get(API::P_DATE).isNull()))
+    if (!json.has(API::P_LOG_FACES_ID) && (!json.has(API::P_STREAM_ID) || !json.has(API::P_DATE)))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
     int id_vstream = 0;
 
     int id_log = 0;
-    if (!json.get(API::P_LOG_FACES_ID).isNull())
-      id_log = json.get(API::P_LOG_FACES_ID).toNumber().orIfNull(0);
+    if (json.has(API::P_LOG_FACES_ID))
+      id_log = jsonInteger(json, API::P_LOG_FACES_ID);
 
-    QDateTime log_date = QDateTime::fromString(QString::fromStdString(json.get(API::P_DATE).toString().orIfNull("")), API::DATETIME_FORMAT);
-    if (id_log == 0 && !log_date.isValid())
+    DateTime log_date;
+    bool is_valid = absl::ParseTime(API::DATETIME_FORMAT, jsonString(json, API::P_DATE), absl::LocalTimeZone(), &log_date, nullptr);
+    if (id_log == 0 && !is_valid)
     {
-      simpleResponse(API::CODE_NOT_ACCEPTABLE, API::INCORRECT_PARAMETER.arg(API::P_DATE), response);
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_DATE), response);
       return;
     }
 
-    singleton.addLog(API::LOG_CALL_BEST_QUALITY.arg(API::BEST_QUALITY).arg(id_log).arg(
-      vstream_ext, QString::fromStdString(json.get(API::P_DATE).toString().orIfNull(""))));
+    String event_uuid = jsonString(json, API::P_EVENT_UUID);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_BEST_QUALITY, API::BEST_QUALITY, id_log, vstream_ext,
+      jsonString(json, API::P_DATE), event_uuid));
 
     double interval_before = 0.0;
     double interval_after = 0.0;
+    bool do_copy_event_data = false;
 
     if (id_log == 0)
     {
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-      id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+      ReadLocker lock(singleton.mtx_task_config);
+      if (singleton.task_config.conf_vstream_ext_to_id_vstream.contains(vstream_ext))
+        id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.at(vstream_ext);
       if (id_vstream == 0)
         return;
 
-      interval_before = singleton.task_config.vstream_conf_params[id_vstream][CONF_BEST_QUALITY_INTERVAL_BEFORE].value.toDouble();
-      interval_after = singleton.task_config.vstream_conf_params[id_vstream][CONF_BEST_QUALITY_INTERVAL_AFTER].value.toDouble();
+      interval_before = singleton.getConfigParamValue<double>(CONF_BEST_QUALITY_INTERVAL_BEFORE, id_vstream);
+      interval_after = singleton.getConfigParamValue<double>(CONF_BEST_QUALITY_INTERVAL_AFTER, id_vstream);
+      do_copy_event_data = singleton.getConfigParamValue<bool>(CONF_COPY_EVENT_DATA);
+    } else
+    {
+      ReadLocker lock(singleton.mtx_task_config);
+      do_copy_event_data = singleton.getConfigParamValue<bool>(CONF_COPY_EVENT_DATA);
     }
 
-    SQLGuard sql_guard;
-    QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-    QSqlQuery q_get_log_faces(sql_db);
-    QString sql_query = (id_log == 0) ? SQL_GET_LOG_FACE_BEST_QUALITY : SQL_GET_LOG_FACE_BY_ID;
-    if (!q_get_log_faces.prepare(sql_query))
+    try
     {
-      singleton.addLog(ERROR_SQL_PREPARE.arg((id_log == 0) ? "SQL_GET_LOG_FACE_BEST_QUALITY" : "SQL_GET_LOG_FACE_BY_ID"));
-      singleton.addLog(q_get_log_faces.lastError().text());
+      auto mysql_session = singleton.sql_client->getSession();
+      String sql_query = (id_log == 0) ? SQL_GET_LOG_FACE_BEST_QUALITY : SQL_GET_LOG_FACE_BY_ID;
+      auto statement = mysql_session.sql(sql_query);
+      auto result = ((id_log == 0) ? statement
+        .bind(id_vstream)
+        .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
+        .bind(interval_before)
+        .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
+        .bind(interval_after) : statement.bind(id_log)).execute();
+      auto row = result.fetchOne();
+      if (row)
+      {
+        String screenshot = singleton.http_server_screenshot_url + row[0].get<std::string>();
+        int face_left = row[1];
+        int face_top = row[2];
+        int face_width = row[3];
+        int face_height = row[4];
+        absl::ParseTime(API::DATETIME_FORMAT_LOG_FACES, row[5].get<std::string>(), absl::LocalTimeZone(), &log_date, nullptr);
+
+        crow::json::wvalue json_data;
+        json_data[API::P_SCREENSHOT] = screenshot;
+        json_data[API::P_FACE_LEFT] = face_left;
+        json_data[API::P_FACE_TOP] = face_top;
+        json_data[API::P_FACE_WIDTH] = face_width;
+        json_data[API::P_FACE_HEIGHT] = face_height;
+
+        int code = API::CODE_SUCCESS;
+        crow::json::wvalue json_response{
+          {API::P_CODE, code},
+          {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+          {API::P_MESSAGE, API::MSG_DONE},
+          {API::P_DATA, json_data}
+        };
+        response.code = code;
+        response.body = json_response.dump();
+
+        if (do_copy_event_data)
+        {
+          std::error_code ec;
+          auto orig_screenshot = singleton.screenshot_path / row[0].get<std::string>();
+          auto event_screenshot = singleton.events_path / row[0].get<std::string>();
+          String event_json = event_screenshot.parent_path() / (event_screenshot.stem() += ".json");
+
+          //копируем, если нужно, данные события
+          if (!std::filesystem::exists(event_json))
+          {
+            //копируем скриншот
+            if (event_uuid.empty())
+            {
+              std::filesystem::create_directories(event_screenshot.parent_path(), ec);
+              std::filesystem::copy(orig_screenshot, event_screenshot, std::filesystem::copy_options::overwrite_existing, ec);
+            }
+
+            //копируем JSON-данные с добавлением URL кадра и времени события
+            {
+              String orig_json = orig_screenshot.parent_path() / (orig_screenshot.stem() += ".json");
+              const auto f_size = std::filesystem::file_size(orig_json, ec);
+              if (!ec && f_size > 0)
+              {
+                ifstream fr_json(orig_json, std::ios::in | std::ios::binary);
+                String s_json(f_size, '\0');
+                fr_json.read(s_json.data(), static_cast<streamsize>(f_size));
+                crow::json::wvalue j_event(crow::json::load(s_json));
+                if (event_uuid.empty())
+                  j_event["event_url"] = singleton.http_server_events_url + row[0].get<std::string>();
+                else
+                  j_event["event_uuid"] = event_uuid;
+                j_event["event_date"] = row[5].get<std::string>();
+
+                std::filesystem::create_directories(event_screenshot.parent_path(), ec);
+                ofstream fw_json(event_json, std::ios::out | std::ios::binary);
+                fw_json << j_event.dump();
+              }
+            }
+
+            //копируем данные дескрипторов события
+            {
+              String orig_data = orig_screenshot.parent_path() / (orig_screenshot.stem() += ".dat");
+              const auto f_size = std::filesystem::file_size(orig_data, ec);
+              if (!ec && f_size > 0)
+              {
+                ifstream fr_data(orig_data, std::ios::in | std::ios::binary);
+                String s_data(f_size, '\0');
+                fr_data.read(s_data.data(), static_cast<streamsize>(f_size));
+
+                String event_data = singleton.events_path / (absl::FormatTime(API::DATE_FORMAT, log_date, absl::LocalTimeZone()) + ".dat");
+
+                scoped_lock lock(singleton.mtx_append_event);
+                std::filesystem::create_directories(singleton.events_path, ec);
+                ofstream fw_data(event_data, std::ios::app);
+                fw_data.write(s_data.data(), static_cast<streamsize>(f_size));
+              }
+            }
+          }
+        }
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, (id_log == 0) ? "SQL_GET_LOG_FACE_BEST_QUALITY" : "SQL_GET_LOG_FACE_BY_ID"));
+      singleton.addLog(err.what());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
     }
 
-    if (id_log == 0)
-    {
-      q_get_log_faces.bindValue(":id_vstream", id_vstream);
-      q_get_log_faces.bindValue(":log_date", log_date);
-      q_get_log_faces.bindValue(":interval_before", interval_before);
-      q_get_log_faces.bindValue(":interval_after", interval_after);
-    } else
-      q_get_log_faces.bindValue(":id_log", id_log);
-
-    q_get_log_faces.exec();
-    if (q_get_log_faces.next())
-    {
-      QString screenshot = singleton.http_server_screenthot_url + q_get_log_faces.value("screenshot").toString();
-      int face_left = q_get_log_faces.value("face_left").toInt();
-      int face_top = q_get_log_faces.value("face_top").toInt();
-      int face_width = q_get_log_faces.value("face_width").toInt();
-      int face_height = q_get_log_faces.value("face_height").toInt();
-
-      Wt::Json::Object json_data;
-      json_data[API::P_SCREENSHOT] = qUtf8Printable(screenshot);
-      json_data[API::P_FACE_LEFT] = face_left;
-      json_data[API::P_FACE_TOP] = face_top;
-      json_data[API::P_FACE_WIDTH] = face_width;
-      json_data[API::P_FACE_HEIGHT] = face_height;
-
-      int code = API::CODE_SUCCESS;
-      Wt::Json::Object json_response;
-      json_response[API::P_CODE] = code;
-      json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-      json_response[API::P_MESSAGE] = API::MSG_DONE;
-      json_response[API::P_DATA] = json_data;
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_response, API::INDENT);
-    }
-
     return;
   }
 
-  if (api_function == API::REGISTER_FACE.toLower())
+  if (api_function == absl::AsciiStrToLower(API::REGISTER_FACE))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -324,38 +430,39 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     if (!checkInputParam(json, response, API::P_URL))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
-    QString url = QString::fromStdString(json.get(API::P_URL).toString().orIfNull(""));
-    int face_left = json.get(API::P_FACE_LEFT).toNumber().orIfNull(0);
-    int face_top = json.get(API::P_FACE_TOP).toNumber().orIfNull(0);
-    int face_width = json.get(API::P_FACE_WIDTH).toNumber().orIfNull(0);
-    int face_height = json.get(API::P_FACE_HEIGHT).toNumber().orIfNull(0);
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
+    String url = jsonString(json, API::P_URL);
+    int face_left = jsonInteger(json, API::P_FACE_LEFT);
+    int face_top = jsonInteger(json, API::P_FACE_TOP);
+    int face_width = jsonInteger(json, API::P_FACE_WIDTH);
+    int face_height = jsonInteger(json, API::P_FACE_HEIGHT);
     int id_vstream = 0;
-    QString comments;
+    String comments;
 
-    singleton.addLog(API::LOG_CALL_REGISTER_FACE.arg(API::REGISTER_FACE, vstream_ext, url).arg(
-      face_left).arg(face_top).arg(face_width).arg(face_height));
+    singleton.addLog(absl::Substitute(API::LOG_CALL_REGISTER_FACE, API::REGISTER_FACE, vstream_ext, url,
+      face_left, face_top, face_width, face_height));
 
     //scope for lock mutex
     {
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-      id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+      ReadLocker lock(singleton.mtx_task_config);
+
+      auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+      if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+        id_vstream = it->second;
       if (id_vstream > 0)
-        comments = singleton.task_config.vstream_conf_params[id_vstream][CONF_COMMENTS_URL_IMAGE_ERROR].value.toString();
+        comments = singleton.getConfigParamValue<String>(CONF_COMMENTS_URL_IMAGE_ERROR, id_vstream);
     }
 
     if (id_vstream == 0)
     {
-      auto err_msg = API::ERROR_INVALID_VSTREAM.arg(vstream_ext);
+      auto err_msg = absl::Substitute(API::ERROR_INVALID_VSTREAM, vstream_ext);
       singleton.addLog(err_msg);
-      simpleResponse(API::CODE_NOT_ACCEPTABLE, err_msg, response);
+      simpleResponse(API::CODE_ERROR, err_msg, response);
       return;
     }
 
-    auto task_data = std::make_shared<TaskData>(id_vstream, TASK_GET_FRAME_FROM_URL);
-    task_data->is_registration = true;
-    task_data->frame_url = url;
-    task_data->response_continuation = response.createContinuation();
+    auto task_data = TaskData(id_vstream, TASK_REGISTER_DESCRIPTOR);
+    task_data.frame_url = url;
     auto rd = std::make_shared<RegisterDescriptorResponse>();
     rd->comments = comments;
     rd->face_left = face_left;
@@ -363,15 +470,47 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     rd->face_width = face_width;
     rd->face_height = face_height;
 
-    task_data->response_continuation->setData(rd);
-    task_data->response_continuation->waitForMoreData();
-    singleton.task_scheduler->addTask(task_data, 0.0);
-    response.setStatus(API::CODE_SUCCESS);
+    processFrame(task_data, rd, nullptr).get();
+
+    crow::json::wvalue json_response;
+    int code = API::CODE_SUCCESS;
+    if (rd->id_descriptor > 0)
+    {
+      std::vector<uchar> buff_;
+      cv::imencode(".jpg", rd->face_image, buff_);
+      String mime_type = "image/jpeg";
+      crow::json::wvalue json_data;
+      json_data[API::P_FACE_ID] = rd->id_descriptor;
+      json_data[API::P_FACE_LEFT] = rd->face_left;
+      json_data[API::P_FACE_TOP] = rd->face_top;
+      json_data[API::P_FACE_WIDTH] = rd->face_width;
+      json_data[API::P_FACE_HEIGHT] = rd->face_height;
+      json_data[API::P_FACE_IMAGE] = absl::Substitute("data:$0;base64,$1", mime_type,
+        absl::Base64Escape(String((const char *)(buff_.data()), buff_.size())));
+
+      json_response = {
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, json_data}
+      };
+    } else
+    {
+      code = API::CODE_ERROR;
+      json_response = {
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, rd->comments}
+      };
+    }
+
+    response.code = code;
+    response.body = json_response.dump();
 
     return;
   }
 
-  if (api_function == API::ADD_FACES.toLower() || api_function == API::REMOVE_FACES.toLower())
+  if (api_function == absl::AsciiStrToLower(API::ADD_FACES) || api_function == absl::AsciiStrToLower(API::REMOVE_FACES))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -379,28 +518,24 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     if (!checkInputParam(json, response, API::P_FACE_IDS))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
     std::vector<int> face_ids;
-    Wt::Json::Array face_ids_list = json.get(API::P_FACE_IDS).orIfNull(Wt::Json::Array());
-    QString face_ids_list2;
-    for (auto&& json_value : face_ids_list)
+    auto face_ids_list = json[API::P_FACE_IDS];
+    for (const auto& json_value : face_ids_list)
     {
-      int id_descriptor = json_value.toNumber().orIfNull(0);
+      int id_descriptor = jsonInteger(json_value);
       if (id_descriptor > 0)
-      {
         face_ids.push_back(id_descriptor);
-        face_ids_list2 += QString::number(id_descriptor) + ", ";
-      }
     }
 
-    face_ids_list2.chop(2);
-    singleton.addLog(API::LOG_CALL_ADD_OR_REMOVE_FACES.arg(
-      api_function == API::ADD_FACES.toLower() ? API::ADD_FACES : API::REMOVE_FACES, vstream_ext, face_ids_list2));
+    auto face_ids_list2 = absl::StrJoin(face_ids, ", ");
+    singleton.addLog(absl::Substitute(API::LOG_CALL_ADD_OR_REMOVE_FACES,
+      (api_function == absl::AsciiStrToLower(API::ADD_FACES)) ? API::ADD_FACES : API::REMOVE_FACES, vstream_ext, face_ids_list2));
 
     bool is_ok2 = true;
-    if (api_function == API::ADD_FACES.toLower())
+    if (api_function == absl::AsciiStrToLower(API::ADD_FACES))
       is_ok2 = addFaces(vstream_ext, face_ids);
-    if (api_function == API::REMOVE_FACES.toLower())
+    if (api_function == absl::AsciiStrToLower(API::REMOVE_FACES))
       is_ok2 = removeFaces(vstream_ext, face_ids);
     int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
     simpleResponse(code, response);
@@ -408,104 +543,72 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function == API::LIST_STREAMS.toLower())
+  if (api_function == absl::AsciiStrToLower(API::LIST_STREAMS))
   {
-    singleton.addLog(API::LOG_CALL_SIMPLE_METHOD.arg(API::LIST_STREAMS));
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SIMPLE_METHOD, API::LIST_STREAMS));
 
-    //для теста
-    /*{
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-
-      for (auto&& id_descriptor : singleton.id_vstream_to_id_descriptors[1022])
+    crow::json::wvalue::list json_data;
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      auto r_vstreams = mysql_session.sql(SQL_GET_VIDEO_STREAMS)
+        .bind(singleton.id_worker)
+        .execute();
+      auto statement_link_descriptor_vstream = mysql_session.sql(SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID);
+      for (auto row_vstream : r_vstreams.fetchAll())
       {
-        cout << id_descriptor << "  ";
-      }
-      cout << endl;
-    }*/
-
-    SQLGuard sql_guard;
-    QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-    QSqlQuery q_vstreams(sql_db);
-    if (!q_vstreams.prepare(SQL_GET_VIDEO_STREAMS))
-    {
-      singleton.addLog(ERROR_SQL_PREPARE.arg("SQL_GET_VIDEO_STREAMS"));
-      singleton.addLog(q_vstreams.lastError().text());
-      simpleResponse(API::CODE_SERVER_ERROR, response);
-      return;
-    }
-    q_vstreams.bindValue(":id_worker", singleton.id_worker);
-    if (!q_vstreams.exec())
-    {
-      singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_VIDEO_STREAMS"));
-      singleton.addLog(q_vstreams.lastError().text());
-      simpleResponse(API::CODE_SERVER_ERROR, response);
-      return;
-    }
-
-    QSqlQuery q_links_descriptor_vstream(sql_db);
-    if (!q_links_descriptor_vstream.prepare(SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID))
-    {
-      singleton.addLog(ERROR_SQL_PREPARE.arg("SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID"));
-      singleton.addLog(q_links_descriptor_vstream.lastError().text());
-      simpleResponse(API::CODE_SERVER_ERROR, response);
-      return;
-    }
-
-    Wt::Json::Array json_data;
-    while (q_vstreams.next())
-    {
-      int id_vstream = q_vstreams.value("id_vstream").toInt();
-      QString vstream_ext = q_vstreams.value("vstream_ext").toString();
-      if (!vstream_ext.startsWith(API::VIRTUAL_VS))
-      {
-        Wt::Json::Object data;
-        data[API::P_STREAM_ID] = qUtf8Printable(vstream_ext);
-
-        q_links_descriptor_vstream.bindValue(":id_worker", singleton.id_worker);
-        q_links_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-        if (!q_links_descriptor_vstream.exec())
+        int id_vstream = row_vstream[0];
+        auto vstream_ext = row_vstream[1].get<std::string>();
+        if (!vstream_ext.starts_with(API::VIRTUAL_VS))
         {
-          singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID"));
-          singleton.addLog(q_links_descriptor_vstream.lastError().text());
-          simpleResponse(API::CODE_SERVER_ERROR, response);
-          return;
-        }
+          crow::json::wvalue data;
+          data[API::P_STREAM_ID] = vstream_ext;
 
-        Wt::Json::Array faces;
-        while (q_links_descriptor_vstream.next())
-        {
-          int id_descriptor = q_links_descriptor_vstream.value("id_descriptor").toInt();
-          faces.push_back(id_descriptor);
+          auto r_link_descriptor_vstream = statement_link_descriptor_vstream
+            .bind(singleton.id_worker)
+            .bind(id_vstream)
+            .execute();
+          vector<int> faces;
+          for (auto row_link_descriptor_vstream : r_link_descriptor_vstream)
+          {
+            int id_descriptor = row_link_descriptor_vstream[0];
+            faces.push_back(id_descriptor);
+          }
+          if (!faces.empty())
+            data[API::P_FACE_IDS] = faces;
+          json_data.push_back(std::move(data));
         }
-        if (!faces.empty())
-          data[API::P_FACE_IDS] = faces;
-        json_data.push_back(data);
       }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
     }
 
     if (!json_data.empty())
     {
       int code = API::CODE_SUCCESS;
-      Wt::Json::Object json_response;
-      json_response[API::P_CODE] = code;
-      json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-      json_response[API::P_MESSAGE] = API::MSG_DONE;
-      json_response[API::P_DATA] = json_data;
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_response, API::INDENT);
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, json_data}
+      };
+      response.code = code;
+      response.body = json_response.dump();
     }
 
     return;
   }
 
-  if (api_function == API::REMOVE_STREAM.toLower())
+  if (api_function == absl::AsciiStrToLower(API::REMOVE_STREAM))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
-    singleton.addLog(API::LOG_CALL_REMOVE_STREAM.arg(API::REMOVE_STREAM, vstream_ext));
+    auto vstream_ext = jsonString(json, API::P_STREAM_ID);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_REMOVE_STREAM, API::REMOVE_STREAM, vstream_ext));
 
     if (!removeVStream(vstream_ext))
       simpleResponse(API::CODE_SERVER_ERROR, response);
@@ -514,89 +617,91 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
   }
 
   //для теста
-  if (api_function == API::TEST_IMAGE.toLower())
+  if (api_function == absl::AsciiStrToLower(API::TEST_IMAGE))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
+    if (!checkInputParam(json, response, API::P_URL))
+      return;
+
+    auto vstream_ext = jsonString(json, API::P_STREAM_ID);
     int id_vstream = 0;
+    auto url = jsonString(json, API::P_URL);
+    singleton.addLog(absl::Substitute(API::LOG_TEST_IMAGE, API::TEST_IMAGE, vstream_ext, url));
 
     //scope for lick mutex
     {
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-      id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+      ReadLocker lock(singleton.mtx_task_config);
+      auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+      if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+        id_vstream = it->second;
       if (id_vstream == 0)
         return;
     }
 
-    cv::Mat frame = cv::imread(singleton.working_path.toStdString() + "/frame.jpg");
-    if (!frame.empty())
+    if (singleton.is_working.load(std::memory_order_relaxed))
     {
-      auto task_data = std::make_shared<TaskData>(id_vstream, TASK_TEST, false, 0, std::move(frame));
-      singleton.task_scheduler->addTask(task_data, 0.0);
+      auto task_data = TaskData(id_vstream, TASK_TEST);
+      task_data.frame_url = url;
+      singleton.runtime->thread_pool_executor()->submit(processFrame, task_data, nullptr, nullptr);
     }
 
     return;
   }
 
-  if (api_function == API::LIST_ALL_FACES.toLower())
+  if (api_function == absl::AsciiStrToLower(API::LIST_ALL_FACES))
   {
-    singleton.addLog(API::LOG_CALL_SIMPLE_METHOD.arg(API::LIST_ALL_FACES));
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SIMPLE_METHOD, API::LIST_ALL_FACES));
 
-    SQLGuard sql_guard;
-    QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-    QSqlQuery q_descriptors(SQL_GET_ALL_FACE_DESCRIPTORS, sql_db);
-    if (!q_descriptors.exec())
+    crow::json::wvalue::list json_data;
+    try
     {
-      singleton.addLog(ERROR_SQL_EXEC.arg("SQL_GET_ALL_FACE_DESCRIPTORS"));
-      singleton.addLog(q_descriptors.lastError().text());
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_GET_ALL_FACE_DESCRIPTORS).execute();
+      for (auto row : result.fetchAll())
+      {
+        int id_descriptor = row[0];
+        json_data.push_back(id_descriptor);
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_GET_ALL_FACE_DESCRIPTORS"));
+      singleton.addLog(err.what());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
-    }
-
-    Wt::Json::Array json_data;
-    while (q_descriptors.next())
-    {
-      int id_descriptor = q_descriptors.value("id_descriptor").toInt();
-      json_data.push_back(id_descriptor);
     }
 
     if (!json_data.empty())
     {
       int code = API::CODE_SUCCESS;
-      Wt::Json::Object json_response;
-      json_response[API::P_CODE] = code;
-      json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-      json_response[API::P_MESSAGE] = API::MSG_DONE;
-      json_response[API::P_DATA] = json_data;
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_response, API::INDENT);
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_DATA, json_data}
+      };
+      response.code = code;
+      response.body = json_response.dump();
     }
 
     return;
   }
 
-  if (api_function == API::DELETE_FACES.toLower())
+  if (api_function == absl::AsciiStrToLower(API::DELETE_FACES))
   {
     if (!checkInputParam(json, response, API::P_FACE_IDS))
       return;
 
     std::vector<int> face_ids;
-    Wt::Json::Array face_ids_list = json.get(API::P_FACE_IDS).orIfNull(Wt::Json::Array());
-    QString face_ids_list2;
-    for (auto&& json_value : face_ids_list)
+    auto face_ids_list = json[API::P_FACE_IDS];
+    for (const auto& json_value : face_ids_list)
     {
-      int id_descriptor = json_value.toNumber().orIfNull(0);
+      int id_descriptor = jsonInteger(json_value);
       if (id_descriptor > 0)
-      {
         face_ids.push_back(id_descriptor);
-        face_ids_list2 += QString::number(id_descriptor) + ", ";
-      }
     }
-    face_ids_list2.chop(2);
-    singleton.addLog(API::LOG_CALL_DELETE_FACES.arg(API::DELETE_FACES, face_ids_list2));
+    auto face_ids_list2 = absl::StrJoin(face_ids, ", ");
+    singleton.addLog(absl::Substitute(API::LOG_CALL_DELETE_FACES, API::DELETE_FACES, face_ids_list2));
     bool is_ok2 = deleteFaces(face_ids);
     int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
     simpleResponse(code, response);
@@ -604,7 +709,7 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     return;
   }
 
-  if (api_function == API::GET_EVENTS.toLower())
+  if (api_function == absl::AsciiStrToLower(API::GET_EVENTS))
   {
     if (!checkInputParam(json, response, API::P_STREAM_ID))
       return;
@@ -615,400 +720,674 @@ void ApiResource::handleRequest(const Wt::Http::Request& request, Wt::Http::Resp
     if (!checkInputParam(json, response, API::P_DATE_END))
       return;
 
-    QDateTime date_start = QDateTime::fromString(QString::fromStdString(json.get(API::P_DATE_START).toString().orIfNull("")), API::DATETIME_FORMAT);
-    if (!date_start.isValid())
+    DateTime date_start;
+    auto is_valid = absl::ParseTime(API::DATETIME_FORMAT, jsonString(json, API::P_DATE_START), absl::LocalTimeZone(), &date_start, nullptr);
+    if (!is_valid)
     {
-      simpleResponse(API::CODE_NOT_ACCEPTABLE, API::INCORRECT_PARAMETER.arg(API::P_DATE_START), response);
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_DATE_START), response);
       return;
     }
 
-    QDateTime date_end = QDateTime::fromString(QString::fromStdString(json.get(API::P_DATE_END).toString().orIfNull("")), API::DATETIME_FORMAT);
-    if (!date_end.isValid())
+    DateTime date_end;
+    is_valid = absl::ParseTime(API::DATETIME_FORMAT, jsonString(json, API::P_DATE_END), absl::LocalTimeZone(), &date_end, nullptr);
+    if (!is_valid)
     {
-      simpleResponse(API::CODE_NOT_ACCEPTABLE, API::INCORRECT_PARAMETER.arg(API::P_DATE_END), response);
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_DATE_END), response);
       return;
     }
 
-    QString vstream_ext = QString::fromStdString(json.get(API::P_STREAM_ID).toString().orIfNull(""));
+    auto vstream_ext = jsonString(json, API::P_STREAM_ID);
     int id_vstream = 0;
 
     //scope for lock mutex
     {
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-      id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+      ReadLocker lock(singleton.mtx_task_config);
+      auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+      if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+        id_vstream = it->second;
       if (id_vstream == 0)
         return;
     }
 
-    singleton.addLog(API::LOG_CALL_GET_EVENTS.arg(API::GET_EVENTS, vstream_ext,
-      QString::fromStdString(json.get(API::P_DATE_START).toString().orIfNull("")),
-      QString::fromStdString(json.get(API::P_DATE_END).toString().orIfNull(""))));
+    singleton.addLog(absl::Substitute(API::LOG_CALL_GET_EVENTS,API::GET_EVENTS, vstream_ext,
+      jsonString(json, API::P_DATE_START), jsonString(json, API::P_DATE_END)));
 
-    SQLGuard sql_guard;
-    QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-    QSqlQuery q_get_log_faces(sql_db);
-    QString sql_query = SQL_GET_LOG_FACES_FROM_INTERVAL;
-    if (!q_get_log_faces.prepare(sql_query))
+    crow::json::wvalue::list json_data;
+    try
     {
-      singleton.addLog(ERROR_SQL_PREPARE.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
-      singleton.addLog(q_get_log_faces.lastError().text());
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_GET_LOG_FACES_FROM_INTERVAL)
+        .bind(id_vstream)
+        .bind(absl::FormatTime(API::DATETIME_FORMAT, date_start, absl::LocalTimeZone()))
+        .bind(absl::FormatTime(API::DATETIME_FORMAT, date_end, absl::LocalTimeZone()))
+        .execute();
+      for (auto row : result.fetchAll())
+      {
+        String log_date = row[0].get<std::string>();
+        int id_descriptor = row[1].isNull() ? 0 : row[1].get<int>();
+        double quality = row[2].get<double>();
+        String screenshot = row[3].get<std::string>();
+        int face_left = row[4];
+        int face_top = row[5];
+        int face_width = row[6];
+        int face_height = row[7];
+
+        crow::json::wvalue json_item;
+        json_item[API::P_DATE] = log_date.c_str();
+        if (id_descriptor > 0)
+          json_item[API::P_FACE_ID] = id_descriptor;
+        json_item[API::P_QUALITY] = static_cast<int>(quality);
+        json_item[API::P_SCREENSHOT] = screenshot.c_str();
+        json_item[API::P_FACE_LEFT] = face_left;
+        json_item[API::P_FACE_TOP] = face_top;
+        json_item[API::P_FACE_WIDTH] = face_width;
+        json_item[API::P_FACE_HEIGHT] = face_height;
+
+        json_data.push_back(std::move(json_item));
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_GET_LOG_FACES_FROM_INTERVAL"));
+      singleton.addLog(err.what());
       simpleResponse(API::CODE_SERVER_ERROR, response);
       return;
-    }
-
-    q_get_log_faces.bindValue(":id_vstream", id_vstream);
-    q_get_log_faces.bindValue(":date_start", date_start);
-    q_get_log_faces.bindValue(":date_end", date_end);
-    if (!q_get_log_faces.exec())
-    {
-      singleton.addLog(ERROR_SQL_EXEC.arg(SQL_GET_LOG_FACES_FROM_INTERVAL));
-      singleton.addLog(q_get_log_faces.lastError().text());
-      simpleResponse(API::CODE_SERVER_ERROR, response);
-      return;
-    }
-
-    Wt::Json::Array json_data;
-    while (q_get_log_faces.next())
-    {
-      QDateTime log_date = q_get_log_faces.value("log_date").toDateTime();
-      int id_descriptor = q_get_log_faces.value("id_descriptor").toInt();
-      double quality = q_get_log_faces.value("quality").toDouble();
-      QString screenshot = singleton.http_server_screenthot_url + q_get_log_faces.value("screenshot").toString();
-      int face_left = q_get_log_faces.value("face_left").toInt();
-      int face_top = q_get_log_faces.value("face_top").toInt();
-      int face_width = q_get_log_faces.value("face_width").toInt();
-      int face_height = q_get_log_faces.value("face_height").toInt();
-
-      Wt::Json::Object json_item;
-      json_item[API::P_DATE] = qUtf8Printable(log_date.toString(API::DATETIME_FORMAT_LOG_FACES));
-      if (id_descriptor > 0)
-        json_item[API::P_FACE_ID] = id_descriptor;
-      json_item[API::P_QUALITY] = int(quality);
-      json_item[API::P_SCREENSHOT] = qUtf8Printable(screenshot);
-      json_item[API::P_FACE_LEFT] = face_left;
-      json_item[API::P_FACE_TOP] = face_top;
-      json_item[API::P_FACE_WIDTH] = face_width;
-      json_item[API::P_FACE_HEIGHT] = face_height;
-
-      json_data.push_back(json_item);
     }
 
     if (!json_data.empty())
     {
       int code = API::CODE_SUCCESS;
-      Wt::Json::Object json_response;
-      json_response[API::P_CODE] = code;
-      json_response[API::P_NAME] = API::RESPONSE_RESULT[code];
-      json_response[API::P_MESSAGE] = API::MSG_DONE;
-      json_response[API::P_DATA] = json_data;
-      response.setStatus(code);
-      response.out() << Wt::Json::serialize(json_response, API::INDENT);
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, json_data}
+      };
+      response.code = code;
+      response.body = json_response.dump();
     }
 
     return;
   }
 
-  Wt::Json::Object json_error;
+  if (api_function == absl::AsciiStrToLower(API::ADD_SPECIAL_GROUP))
+  {
+    if (!checkInputParam(json, response, API::P_SPECIAL_GROUP_NAME))
+      return;
+
+    String group_name = jsonString(json, API::P_SPECIAL_GROUP_NAME);
+    auto max_descriptor_count = jsonInteger(json, API::P_MAX_DESCRIPTOR_COUNT);
+    if (json.has(API::P_MAX_DESCRIPTOR_COUNT) && max_descriptor_count < TaskConfig::SG_MIN_DESCRIPTOR_COUNT)
+    {
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_MAX_DESCRIPTOR_COUNT), response);
+      return;
+    }
+    if (max_descriptor_count <= 0)
+      max_descriptor_count = TaskConfig::DEFAULT_SG_MAX_DESCRIPTOR_COUNT;
+
+    singleton.addLog(absl::Substitute(API::LOG_CALL_ADD_SPECIAL_GROUP, API::ADD_SPECIAL_GROUP, group_name, max_descriptor_count));
+
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
+        .bind(group_name)
+        .execute();
+      if (result.fetchOne())
+      {
+        int code = API::CODE_ERROR;
+        crow::json::wvalue json_error{
+          {API::P_CODE, code},
+          {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+          {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}
+        };
+        response.code = code;
+        response.body = json_error.dump();
+        return;
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_GET_SGROUP_BY_NAME"));
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    auto [id_sgroup, token] = addSpecialGroup(group_name, max_descriptor_count);
+    if (id_sgroup == 0 || token.empty())
+    {
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    int code = API::CODE_SUCCESS;
+    crow::json::wvalue json_response{
+      {API::P_CODE, code},
+      {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+      {API::P_MESSAGE, API::MSG_DONE},
+      {
+        API::P_DATA,
+        {
+          {API::P_GROUP_ID, id_sgroup},
+          {API::P_SG_API_TOKEN, token}
+        }
+      }
+    };
+    response.code = code;
+    response.body = json_response.dump();
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::UPDATE_SPECIAL_GROUP))
+  {
+    if (!checkInputParam(json, response, API::P_GROUP_ID))
+      return;
+
+    int id_sgroup = jsonInteger(json, API::P_GROUP_ID);
+    String group_name = jsonString(json, API::P_SPECIAL_GROUP_NAME);
+
+    //если указано пустое название специальной группы, то возвращаем ответ с ошибкой
+    if (json.has(API::P_SPECIAL_GROUP_NAME) && group_name.empty())
+    {
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_SPECIAL_GROUP_NAME), response);
+      return;
+    }
+
+    auto max_descriptor_count = jsonInteger(json, API::P_MAX_DESCRIPTOR_COUNT);
+
+    //если указано некорректное максимальное количество дескрипторов, то возвращаем ответ с ошибкой
+    if (json.has(API::P_MAX_DESCRIPTOR_COUNT) && max_descriptor_count < TaskConfig::SG_MIN_DESCRIPTOR_COUNT)
+    {
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_MAX_DESCRIPTOR_COUNT), response);
+      return;
+    }
+
+    bool sg_exists = false;
+    //scope for lock mutex
+    {
+      ReadLocker lock(singleton.mtx_task_config);
+
+      if (max_descriptor_count <= 0)
+      {
+        auto it = singleton.task_config.conf_sgroup_max_descriptor_count.find(id_sgroup);
+        if (it != singleton.task_config.conf_sgroup_max_descriptor_count.end())
+          max_descriptor_count = it->second;
+        else
+          max_descriptor_count = TaskConfig::DEFAULT_SG_MAX_DESCRIPTOR_COUNT;
+      }
+
+      sg_exists = singleton.task_config.conf_sgroup_max_descriptor_count.contains(id_sgroup);
+    }
+
+    if (!sg_exists)
+    {
+      simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_GROUP_ID), response);
+      return;
+    }
+
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      if (group_name.empty())
+      {
+        //не указано название специальной группы - берем значение из базы
+        auto result = mysql_session.sql(SQL_GET_SGROUP_BY_ID)
+          .bind(id_sgroup)
+          .execute();
+        auto row = result.fetchOne();
+        if (row)
+          group_name = row[1].get<std::string>();
+        else
+        {
+          //в базе нет специальной группы с указанным в запросе идентификатором - возвращаем ответ с ошибкой
+          simpleResponse(API::CODE_ERROR, absl::Substitute(API::INCORRECT_PARAMETER, API::P_GROUP_ID), response);
+          return;
+        }
+      } else
+      {
+        //указано новое название специальной группы в запросе - проверяем, что название уникально
+        auto result = mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
+          .bind(group_name)
+          .execute();
+        auto row = result.fetchOne();
+        if (row)
+        {
+          int temp_id_sgroup = row[0].get<int>();
+          if (id_sgroup != temp_id_sgroup)
+          {
+            //существует другая специальная группа с указанным названием - возвращаем ответ с ошибкой
+            int code = API::CODE_ERROR;
+            crow::json::wvalue json_error{
+              {API::P_CODE, code},
+              {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+              {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}
+            };
+            response.code = code;
+            response.body = json_error.dump();
+            return;
+          }
+        }
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_GET_SGROUP_BY_NAME"));
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    singleton.addLog(absl::Substitute(API::LOG_CALL_UPDATE_SPECIAL_GROUP, API::UPDATE_SPECIAL_GROUP, id_sgroup,
+      group_name, max_descriptor_count));
+
+    bool is_ok2 = updateSpecialGroup(id_sgroup, group_name, max_descriptor_count);
+    int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
+    simpleResponse(code, response);
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::DELETE_SPECIAL_GROUP))
+  {
+    if (!checkInputParam(json, response, API::P_GROUP_ID))
+      return;
+
+    int id_sgroup = jsonInteger(json, API::P_GROUP_ID);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_SIMPLE_METHOD, API::DELETE_SPECIAL_GROUP, id_sgroup));
+
+    auto mysql_session = singleton.sql_client->getSession();
+    try
+    {
+      mysql_session.startTransaction();
+
+      mysql_session.sql(SQL_REMOVE_SG_FACE_DESCRIPTORS)
+        .bind(id_sgroup)
+        .execute();
+
+      mysql_session.sql(SQL_DELETE_SPECIAL_GROUP)
+        .bind(id_sgroup)
+        .execute();
+
+      mysql_session.commit();
+    } catch (const mysqlx::Error& err)
+    {
+      mysql_session.rollback();
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    //scope for lock mutex
+    {
+      WriteLocker lock(singleton.mtx_task_config);
+
+      //удаляем токен авторизации специальной группы
+      auto it = std::find_if(singleton.task_config.conf_token_to_sgroup.begin(), singleton.task_config.conf_token_to_sgroup.end(),
+        [id_sgroup](auto&& p)
+        {
+          return p.second == id_sgroup;
+        });
+      if (it != singleton.task_config.conf_token_to_sgroup.end())
+        singleton.task_config.conf_token_to_sgroup.erase(it);
+
+      //удаляем callback специальной группы
+      singleton.task_config.conf_sgroup_callback_url.erase(id_sgroup);
+
+      //удаляем максимальное количество дескрипторов в специальной группе
+      singleton.task_config.conf_sgroup_max_descriptor_count.erase(id_sgroup);
+
+      //удаляем дескрипторы специальной группы
+      auto it_sgroup = singleton.id_sgroup_to_id_descriptors.find(id_sgroup);
+      if (it_sgroup != singleton.id_sgroup_to_id_descriptors.end())
+        for (const auto& id_descriptor : it_sgroup->second)
+          singleton.id_descriptor_to_data.erase(id_descriptor);
+      singleton.id_sgroup_to_id_descriptors.erase(id_sgroup);
+    }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::PROCESS_FRAME))
+  {
+    if (!json.has(API::P_STREAM_ID) && !json.has(API::P_SG_ID))
+      return;
+
+    if (!checkInputParam(json, response, API::P_URL))
+      return;
+
+    String url = jsonString(json, API::P_URL);
+    String image_base64;
+    if (url.starts_with("data:"))
+    {
+      auto pos_comma = url.find(',');
+      if (pos_comma != std::string::npos)
+        if (url.find(";base64,") != std::string::npos)
+        {
+          image_base64 = url.substr(pos_comma + 1);
+          url = url.substr(0, pos_comma);
+        }
+
+      if (image_base64.empty())
+      {
+        crow::json::wvalue json_error;
+        int code = API::CODE_ERROR;
+        json_error[API::P_CODE] = code;
+        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_URL);
+        response.code = code;
+        response.body = json_error.dump();
+        return;
+      }
+    }
+
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
+    int id_vstream = 0;
+
+    int id_sgroup = 0;
+    if (json.has(API::P_SG_ID))
+      id_sgroup = jsonInteger(json, API::P_SG_ID);
+
+    if (!vstream_ext.empty())
+    {
+      ReadLocker lock(singleton.mtx_task_config);
+      if (singleton.task_config.conf_vstream_ext_to_id_vstream.contains(vstream_ext))
+        id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.at(vstream_ext);
+    }
+
+    if (id_vstream > 0 && id_sgroup > 0)
+      return;
+
+    auto s_url = image_base64.empty() ? url : "base64";
+    singleton.addLog(absl::Substitute(API::LOG_CALL_PROCESS_FRAME, API::PROCESS_FRAME, vstream_ext, id_sgroup, s_url));
+
+    auto task_data = TaskData(id_vstream, TASK_PROCESS_FRAME);
+    task_data.id_sgroup = id_sgroup;
+    task_data.is_base64 = !image_base64.empty();
+    if (task_data.is_base64)
+      task_data.frame_url = std::move(image_base64);
+    else
+      task_data.frame_url = std::move(url);
+    auto process_result = std::make_shared<ProcessFrameResult>();
+    processFrame(task_data, nullptr, process_result).get();
+    if (!process_result->id_descriptors.empty())
+    {
+      crow::json::wvalue::list face_ids;
+      for (auto id_descriptor : process_result->id_descriptors)
+        face_ids.push_back(id_descriptor);
+      int code = API::CODE_SUCCESS;
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, face_ids}
+      };
+      response.code = code;
+      response.body = json_response.dump();
+    }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SAVE_DNN_STATS_DATA))
+  {
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SIMPLE_METHOD, API::SAVE_DNN_STATS_DATA));
+    singleton.saveDNNStatsData();
+
+    return;
+  }
+
   int code = API::CODE_ERROR;
-  json_error[API::P_CODE] = code;
-  json_error[API::P_NAME] = API::RESPONSE_RESULT[code];
-  json_error[API::P_MESSAGE] = qUtf8Printable(API::ERROR_UNKNOWN_API_METHOD);
-  response.setStatus(code);
-  response.out() << Wt::Json::serialize(json_error, API::INDENT);
+  crow::json::wvalue json_error{
+    {API::P_CODE, code},
+    {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}
+  };
+  response.code = code;
+  response.body = json_error.dump();
 }
 
-bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new, const QString& callback_url_new,
-  const std::vector<int>& face_ids, const QHash<QString, QString>& params)
+bool ApiService::addVStream(const String& vstream_ext, const String& url_new, const String& callback_url_new,
+  const std::vector<int>& face_ids, const HashMap<String, String>& params)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
     return false;
 
   int id_vstream = 0;
-  QString url;
-  QString callback_url;
+  String url;
+  String callback_url;
   int region_x = 0;
   int region_y = 0;
   int region_width = 0;
   int region_height = 0;
-  QHash<QString, ConfParam> vstream_params;
-  vstream_params.setSharable(false);
-
-  QSet<int> id_vstream_descriptors;
-  id_vstream_descriptors.setSharable(false);
-  QHash<int, FaceDescriptor> id_descriptor_to_data;
-  id_descriptor_to_data.setSharable(false);
+  HashMap<String, ConfParam> vstream_params;
+  HashSet<int> id_vstream_descriptors;
+  HashMap<int, FaceDescriptor> id_descriptor_to_data;
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
-    id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+    ReadLocker lock(singleton.mtx_task_config);
+    auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+    if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+      id_vstream = it->second;
     if (id_vstream > 0)
     {
-      url = singleton.task_config.conf_vstream_url[id_vstream];
-      callback_url = singleton.task_config.conf_vstream_callback_url[id_vstream];
-      if (singleton.task_config.conf_vstream_region.contains(id_vstream))
-      {
-        region_x = singleton.task_config.conf_vstream_region[id_vstream].x;
-        region_y = singleton.task_config.conf_vstream_region[id_vstream].y;
-        region_width = singleton.task_config.conf_vstream_region[id_vstream].width;
-        region_height = singleton.task_config.conf_vstream_region[id_vstream].height;
-      }
-      id_vstream_descriptors = singleton.id_vstream_to_id_descriptors[id_vstream];
-    }
-    vstream_params = singleton.task_config.vstream_conf_params[id_vstream];
-  }
+      auto it_string = singleton.task_config.conf_vstream_url.find(id_vstream);
+      if (it_string != singleton.task_config.conf_vstream_url.end())
+        url = it_string->second;
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
+      it_string = singleton.task_config.conf_vstream_callback_url.find(id_vstream);
+      if (it_string != singleton.task_config.conf_vstream_callback_url.end())
+        callback_url = it_string->second;
+      auto it_rect = singleton.task_config.conf_vstream_region.find(id_vstream);
+      if (it_rect != singleton.task_config.conf_vstream_region.end())
+      {
+        region_x = it_rect->second.x;
+        region_y = it_rect->second.y;
+        region_width = it_rect->second.width;
+        region_height = it_rect->second.height;
+      }
+      if (singleton.id_vstream_to_id_descriptors.contains(id_vstream))
+        id_vstream_descriptors = singleton.id_vstream_to_id_descriptors[id_vstream];
+    }
+    if (singleton.task_config.vstream_conf_params.contains(id_vstream))
+      vstream_params = singleton.task_config.vstream_conf_params[id_vstream];
+  }
 
   if (id_vstream == 0)
   {
-    //проверяем, есть ли видеопоток в базе
-    QSqlQuery q_get_vstream(sql_db);
-    if (!q_get_vstream.prepare(SQL_GET_VIDEO_STREAM_BY_EXT))
+    //проверяем, есть ли видео поток в базе
+    try
     {
-      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
-      singleton.addLog(q_get_vstream.lastError().text());
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_GET_VIDEO_STREAM_BY_EXT)
+        .bind(vstream_ext)
+        .execute();
+      auto row = result.fetchOne();
+      if (row)
+      {
+        id_vstream = row[0];
+        url = row[2].get<std::string>();
+        callback_url = row[3].get<std::string>();
+        region_x = row[4];
+        region_y = row[5];
+        region_width = row[6];
+        region_height = row[7];
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC_IN_FUNCTION, "SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
+      singleton.addLog(err.what());
       return false;
-    }
-    q_get_vstream.bindValue(":vstream_ext", vstream_ext);
-    if (!q_get_vstream.exec())
-    {
-      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_VIDEO_STREAM_BY_EXT", __FUNCTION__));
-      singleton.addLog(q_get_vstream.lastError().text());
-      return false;
-    }
-    if (q_get_vstream.next())
-    {
-      id_vstream = q_get_vstream.value("id_vstream").toInt();
-      url = q_get_vstream.value("url").toString();
-      callback_url = q_get_vstream.value("callback_url").toString();
-      region_x = q_get_vstream.value("region_x").toInt();
-      region_y = q_get_vstream.value("region_y").toInt();
-      region_width = q_get_vstream.value("region_width").toInt();
-      region_height = q_get_vstream.value("region_height").toInt();
     }
   }
 
-  if (!url_new.isEmpty())
+  if (!url_new.empty())
     url = url_new;
 
-  if (!callback_url_new.isEmpty())
+  if (!callback_url_new.empty())
     callback_url = callback_url_new;
 
-  for (auto it = params.begin(); it != params.end(); ++it)
+  for (const auto& param : params)
   {
-    const QString& param_name = it.key();
-    const QString& param_value = it.value();
+    absl::string_view param_name = param.first;
+    absl::string_view param_value = param.second;
 
     if (param_name == "region-x")
     {
-      bool is_ok = true;
-      int v = param_value.toInt(&is_ok);
+      int v;
+      bool is_ok = absl::SimpleAtoi(param_value, &v);
       if (is_ok)
         region_x = v;
     }
 
     if (param_name == "region-y")
     {
-      bool is_ok = true;
-      int v = param_value.toInt(&is_ok);
+      int v;
+      bool is_ok = absl::SimpleAtoi(param_value, &v);
       if (is_ok)
         region_y = v;
     }
 
     if (param_name == "region-width")
     {
-      bool is_ok = true;
-      int v = param_value.toInt(&is_ok);
+      int v;
+      bool is_ok = absl::SimpleAtoi(param_value, &v);
       if (is_ok)
         region_width = v;
     }
 
     if (param_name == "region-height")
     {
-      bool is_ok = true;
-      int v = param_value.toInt(&is_ok);
+      int v;
+      bool is_ok = absl::SimpleAtoi(param_value, &v);
       if (is_ok)
         region_height = v;
     }
 
     if (vstream_params.contains(param_name))
     {
-      bool is_ok = true;
-      QVariant v;
-      switch (vstream_params[param_name].value.type())
+      bool is_ok = false;
+      Variant v{};
+      if (std::holds_alternative<bool>(vstream_params[param_name].value))
       {
-        case QVariant::Bool:
-          v = static_cast<bool>(param_value.toInt(&is_ok));
-          break;
-
-        case QVariant::Int:
-          v = param_value.toInt(&is_ok);
-          break;
-
-        case QVariant::Double:
-          v = param_value.toDouble(&is_ok);
-          break;
-
-        default:
-          v = param_value;
-          break;
+        int q;
+        is_ok = absl::SimpleAtoi(param_value, &q);
+        if (is_ok)
+          v = static_cast<bool>(q);
       }
-      if (is_ok && v.isValid())
+      if (std::holds_alternative<int>(vstream_params[param_name].value))
+      {
+        int q;
+        is_ok = absl::SimpleAtoi(param_value, &q);
+        if (is_ok)
+          v = q;
+      }
+      if (std::holds_alternative<double>(vstream_params[param_name].value))
+      {
+        double q;
+        is_ok = absl::SimpleAtod(param_value, &q);
+        if (is_ok)
+          v = q;
+      }
+      if (std::holds_alternative<String>(vstream_params[param_name].value))
+      {
+        is_ok = true;
+        v = param.second;
+      }
+
+      if (is_ok)
         vstream_params[param_name].value = v;
     }
   }
 
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = singleton.sql_client->getSession();
+  try
   {
-    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
+    mysql_session.startTransaction();
+    String sql_query = (id_vstream == 0) ? SQL_ADD_VSTREAM : SQL_UPDATE_VSTREAM;
+    auto result = mysql_session.sql(sql_query)
+      .bind(url)
+      .bind(callback_url)
+      .bind(region_x)
+      .bind(region_y)
+      .bind(region_width)
+      .bind(region_height)
+      .bind(id_vstream == 0 ? mysqlx::Value(vstream_ext) : mysqlx::Value(id_vstream))
+      .execute();
 
-  QSqlQuery q_vstream(sql_db);
-  QString sql_query = (id_vstream == 0) ? SQL_ADD_VSTREAM : SQL_UPDATE_VSTREAM;
-  if (!q_vstream.prepare(sql_query))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg(
-      (id_vstream == 0) ? "SQL_INSERT_VSTREAM" : "SQL_UPDATE_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_vstream.lastError().text());
-    return false;
-  }
-  if (id_vstream == 0)
-    q_vstream.bindValue(":vstream_ext", vstream_ext);
-  else
-    q_vstream.bindValue(":id_vstream", id_vstream);
-  q_vstream.bindValue(":url", url);
-  q_vstream.bindValue(":callback_url", callback_url);
-  q_vstream.bindValue(":region_x", region_x);
-  q_vstream.bindValue(":region_y", region_y);
-  q_vstream.bindValue(":region_width", region_width);
-  q_vstream.bindValue(":region_height", region_height);
-  if (!q_vstream.exec())
-  {
-    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg(
-      (id_vstream == 0) ? "SQL_INSERT_VSTREAM" : "SQL_UPDATE_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_vstream.lastError().text());
-    return false;
-  }
+    if (id_vstream == 0)
+      id_vstream = static_cast<int>(result.getAutoIncrementValue());
 
-  if (id_vstream == 0)
-    id_vstream = q_vstream.lastInsertId().toInt();
+    mysql_session.sql(SQL_ADD_LINK_WORKER_VSTREAM)
+      .bind(singleton.id_worker)
+      .bind(id_vstream)
+      .bind(singleton.id_worker)
+      .execute();
 
-  QSqlQuery q_link_worker_vstream(sql_db);
-  if (!q_link_worker_vstream.prepare(SQL_ADD_LINK_WORKER_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_worker_vstream.lastError().text());
-    return false;
-  }
-  q_link_worker_vstream.bindValue(":id_worker", singleton.id_worker);
-  q_link_worker_vstream.bindValue(":id_vstream", id_vstream);
-  if (!q_link_worker_vstream.exec())
-  {
-    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_ADD_LINK_WORKER_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_worker_vstream.lastError().text());
-    return false;
-  }
-
-  //пишем конфигурационные конфигурационные параметры
-  QSqlQuery q_set_vstream_param(sql_db);
-  if (!q_set_vstream_param.prepare(SQL_SET_VIDEO_STREAM_PARAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
-    singleton.addLog(q_set_vstream_param.lastError().text());
-    return false;
-  }
-
-  for (auto it = vstream_params.begin(); it != vstream_params.end(); ++it)
-  {
-    //для теста
-    //cout << QString("__set vstream param %1, %2, %3\n").arg(id_vstream).arg(it.key(), it.value().value.toString()).toStdString();
-
-    q_set_vstream_param.bindValue(":id_vstream", id_vstream);
-    q_set_vstream_param.bindValue(":param_name", it.key());
-    q_set_vstream_param.bindValue(":param_value", it.value().value.toString());
-    if (!q_set_vstream_param.exec())
+    //пишем конфигурационные параметры
+    auto statement = mysql_session.sql(SQL_SET_VIDEO_STREAM_PARAM);
+    for (auto& vstream_param : vstream_params)
     {
-      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_SET_VIDEO_STREAM_PARAM", __FUNCTION__));
-      singleton.addLog(q_set_vstream_param.lastError().text());
-      return false;
-    }
-  }
-
-  //привязываем дескрипторы
-  QSqlQuery q_descriptor(sql_db);
-  if (!q_descriptor.prepare(SQL_GET_FACE_DESCRIPTOR_BY_ID))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
-    singleton.addLog(q_descriptor.lastError().text());
-    return false;
-  }
-
-  QSqlQuery q_link_descriptor_vstream(sql_db);
-  if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_descriptor_vstream.lastError().text());
-    return false;
-  }
-
-  for (auto&& id_descriptor : face_ids)
-  {
-    //для теста
-    //cout << "__descriptor " << id_descriptor;
-
-    q_descriptor.bindValue(":id_descriptor", id_descriptor);
-    if (!q_descriptor.exec())
-    {
-      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
-      singleton.addLog(q_descriptor.lastError().text());
-      return false;
-    }
-    if (q_descriptor.next())
-      if (q_descriptor.value("id_descriptor").toInt() == id_descriptor && id_descriptor > 0)
-      {
-
-        //для теста
-        //cout << " found.\n";
-
-        if (!id_vstream_descriptors.contains(id_descriptor))
-        {
-          FaceDescriptor fd;
-          fd.create(1, int(singleton.descriptor_size), CV_32F);
-          QByteArray ba = q_descriptor.value("descriptor_data").toByteArray();
-          std::memcpy(fd.data, ba.data(), ba.size());
-          double norm_l2 = cv::norm(fd, cv::NORM_L2);
-          if (norm_l2 <= 0.0)
-            norm_l2 = 1.0;
-          fd = fd / norm_l2;
-          id_descriptor_to_data[id_descriptor] = std::move(fd);
-        }
-
-        q_link_descriptor_vstream.bindValue(":id_descriptor", id_descriptor);
-        q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-        q_link_descriptor_vstream.exec();
-      }
       //для теста
-      /*else
-        cout << " not found.\n";*/
-  }
+      //cout << String("__set vstream param %1, %2, %3\n").arg(id_vstream).arg(it.key(), it.value().value.toString()).toStdString();
 
-  if (!sql_transaction.commit())
+      statement
+        .bind(id_vstream)
+        .bind(vstream_param.first)
+        .bind(Singleton::variantToString(vstream_param.second.value))
+        .bind(Singleton::variantToString(vstream_param.second.value))
+        .execute();
+    }
+
+    //привязываем дескрипторы
+    auto stmt_descriptor = mysql_session.sql(SQL_GET_FACE_DESCRIPTOR_BY_ID);
+    auto stmt_link_descriptor_vstream = mysql_session.sql(SQL_ADD_LINK_DESCRIPTOR_VSTREAM);
+    for (const auto& id_descriptor : face_ids)
+    {
+      //для теста
+      //cout << "__descriptor " << id_descriptor;
+
+      auto row_descriptor = stmt_descriptor.bind(id_descriptor).execute().fetchOne();
+      if (row_descriptor)
+        if (row_descriptor[0].get<int>() == id_descriptor && id_descriptor > 0)
+        {
+          //для теста
+          //cout << " found.\n";
+
+          if (!id_vstream_descriptors.contains(id_descriptor))
+          {
+            FaceDescriptor fd;
+            fd.create(1, int(singleton.descriptor_size), CV_32F);
+            auto s = row_descriptor[1].get<std::string >();
+            std::memcpy(fd.data, s.data(), s.size());
+            double norm_l2 = cv::norm(fd, cv::NORM_L2);
+            if (norm_l2 <= 0.0)
+              norm_l2 = 1.0;
+            fd = fd / norm_l2;
+            id_descriptor_to_data[id_descriptor] = std::move(fd);
+          }
+
+          stmt_link_descriptor_vstream
+            .bind(id_descriptor)
+            .bind(id_vstream)
+            .execute();
+        }
+        //для теста
+        /*else
+          cout << " not found.\n";*/
+    }
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
+    mysql_session.rollback();
+    singleton.addLog(err.what());
     return false;
   }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
+    WriteLocker lock(singleton.mtx_task_config);
     singleton.task_config.conf_id_vstream_to_vstream_ext[id_vstream] = vstream_ext;
     singleton.task_config.conf_vstream_ext_to_id_vstream[vstream_ext] = id_vstream;
     singleton.task_config.conf_vstream_url[id_vstream] = url;
@@ -1021,18 +1400,18 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
       singleton.task_config.conf_vstream_region[id_vstream].width = region_width;
       singleton.task_config.conf_vstream_region[id_vstream].height = region_height;
     } else
-      singleton.task_config.conf_vstream_region.remove(id_vstream);
+      singleton.task_config.conf_vstream_region.erase(id_vstream);
 
-    for (auto it = id_descriptor_to_data.begin(); it != id_descriptor_to_data.end(); ++it)
+    for (auto& it : id_descriptor_to_data)
     {
-      int id_descriptor = it.key();
+      int id_descriptor = it.first;
 
       //для теста
       //cout << "__new descriptor for stream: " << id_descriptor << endl;
 
       if (!singleton.id_descriptor_to_data.contains(id_descriptor))
       {
-        singleton.id_descriptor_to_data[id_descriptor] = std::move(it.value());
+        singleton.id_descriptor_to_data[id_descriptor] = std::move(it.second);
 
         //для теста
         //cout << "__descriptor loaded from database.\n";
@@ -1047,18 +1426,20 @@ bool ApiResource::addVStream(const QString& vstream_ext, const QString& url_new,
   return true;
 }
 
-void ApiResource::motionDetection(const QString& vstream_ext, bool is_start)
+void ApiService::motionDetection(const String& vstream_ext, bool is_start)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
       return;
 
   int id_vstream = 0;
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
-    id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+    ReadLocker lock(singleton.mtx_task_config);
+    auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+    if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+      id_vstream = it->second;
   }
 
   if (id_vstream == 0)
@@ -1069,7 +1450,7 @@ void ApiResource::motionDetection(const QString& vstream_ext, bool is_start)
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_capture);
+    scoped_lock lock(singleton.mtx_capture);
     if (is_start)
       singleton.id_vstream_to_start_motion[id_vstream] = now;
     else
@@ -1081,75 +1462,66 @@ void ApiResource::motionDetection(const QString& vstream_ext, bool is_start)
     }
   }
 
-  if (do_task)
+  if (do_task && singleton.is_working.load(std::memory_order_relaxed))
   {
-    auto task_data = std::make_shared<TaskData>(id_vstream, TASK_CAPTURE_VSTREAM_FRAME);
-    singleton.task_scheduler->addTask(task_data, 0.0);
-    singleton.addLog(API::LOG_START_MOTION.arg(task_data->id_vstream));
+    auto task_data = TaskData(id_vstream, TASK_RECOGNIZE);
+    singleton.runtime->thread_pool_executor()->submit(processFrame, task_data, nullptr, nullptr);
+    singleton.addLog(absl::Substitute(API::LOG_START_MOTION, task_data.id_vstream));
   }
 
 }
 
-bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& face_ids)
+bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& face_ids)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
     return false;
 
   int id_vstream = 0;
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
-    id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+    ReadLocker lock(singleton.mtx_task_config);
+    auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+    if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+      id_vstream = it->second;
   }
 
   if (id_vstream == 0)
     return true;
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
-  {
-    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
-
-  QSet<int> id_descriptors;
-  QSqlQuery q_link_descriptor_vstream(sql_db);
-  if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_descriptor_vstream.lastError().text());
-    return false;
-  }
-
-  for (auto&& id_descriptor : face_ids)
-  {
-    q_link_descriptor_vstream.bindValue(":id_descriptor", id_descriptor);
-    q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-    q_link_descriptor_vstream.exec();
-    if (q_link_descriptor_vstream.numRowsAffected() > 0)
-      id_descriptors.insert(id_descriptor);
-  }
-
-  if (!sql_transaction.commit())
-  {
-    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
-
+  HashSet<int> id_descriptors;
   std::vector<int> id_new_descriptors;
+
+  auto mysql_session = singleton.sql_client->getSession();
+  try
+  {
+    mysql_session.startTransaction();
+    auto stmt_link_descriptor_vstream = mysql_session.sql(SQL_ADD_LINK_DESCRIPTOR_VSTREAM);
+
+    for (const auto& id_descriptor : face_ids)
+    {
+      auto result = stmt_link_descriptor_vstream
+        .bind(id_descriptor)
+        .bind(id_vstream)
+        .execute();
+      if (result.getAffectedItemsCount() > 0)
+        id_descriptors.insert(id_descriptor);
+    }
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
+  {
+    mysql_session.rollback();
+    singleton.addLog(err.what());
+    return false;
+  }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
+    WriteLocker lock(singleton.mtx_task_config);
 
-    for (auto&& id_descriptor : id_descriptors)
+    for (const auto& id_descriptor : id_descriptors)
       if (singleton.id_descriptor_to_data.contains(id_descriptor))
       {
         singleton.id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
@@ -1160,65 +1532,55 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
 
   if (!id_new_descriptors.empty())  //привязываем новые дескрипторы, которые есть в базе, но нет в оперативной памяти
   {
-    QHash<int, FaceDescriptor> id_descriptor_to_data;
-    id_descriptor_to_data.setSharable(false);
+    HashMap<int, FaceDescriptor> id_descriptor_to_data;
 
-    sql_transaction.start();
-
-    QSqlQuery q_descriptor(sql_db);
-    if (!q_descriptor.prepare(SQL_GET_FACE_DESCRIPTOR_BY_ID))
+    try
     {
-      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
-      singleton.addLog(q_descriptor.lastError().text());
-      return false;
-    }
+      mysql_session.startTransaction();
+      auto stmt_descriptor = mysql_session.sql(SQL_GET_FACE_DESCRIPTOR_BY_ID);
+      auto stmt_link_descriptor_vstream = mysql_session.sql(SQL_ADD_LINK_DESCRIPTOR_VSTREAM);
 
-    if (!q_link_descriptor_vstream.prepare(SQL_ADD_LINK_DESCRIPTOR_VSTREAM))
-    {
-      singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_ADD_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
-      singleton.addLog(q_link_descriptor_vstream.lastError().text());
-      return false;
-    }
-
-    for (auto&& id_descriptor : id_new_descriptors)
-    {
-      q_descriptor.bindValue(":id_descriptor", id_descriptor);
-      if (!q_descriptor.exec())
+      for (const auto& id_descriptor : id_new_descriptors)
       {
-        singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_FACE_DESCRIPTOR_BY_ID", __FUNCTION__));
-        singleton.addLog(q_descriptor.lastError().text());
-        return false;
+        auto row = stmt_descriptor.bind(id_descriptor).execute().fetchOne();
+        if (row)
+          if (row[0].get<int>() == id_descriptor && id_descriptor > 0)
+          {
+            //для теста
+            //cout << "load from db descriptor: " << id_descriptor << endl;
+
+            FaceDescriptor fd;
+            fd.create(1, int(singleton.descriptor_size), CV_32F);
+            std::string s = row[1].get<std::string>();
+            std::memcpy(fd.data, s.data(), s.size());
+            double norm_l2 = cv::norm(fd, cv::NORM_L2);
+            if (norm_l2 <= 0.0)
+              norm_l2 = 1.0;
+            fd = fd / norm_l2;
+            id_descriptor_to_data[id_descriptor] = std::move(fd);
+
+            stmt_link_descriptor_vstream
+              .bind(id_descriptor)
+              .bind(id_vstream)
+              .execute();
+          }
       }
 
-      if (q_descriptor.next())
-        if (q_descriptor.value("id_descriptor").toInt() == id_descriptor && id_descriptor > 0)
-        {
-          //для теста
-          //cout << "load from db descriptor: " << id_descriptor << endl;
-
-          FaceDescriptor fd;
-          fd.create(1, int(singleton.descriptor_size), CV_32F);
-          QByteArray ba = q_descriptor.value("descriptor_data").toByteArray();
-          std::memcpy(fd.data, ba.data(), ba.size());
-          double norm_l2 = cv::norm(fd, cv::NORM_L2);
-          if (norm_l2 <= 0.0)
-            norm_l2 = 1.0;
-          fd = fd / norm_l2;
-          id_descriptor_to_data[id_descriptor] = std::move(fd);
-
-          q_link_descriptor_vstream.bindValue(":id_descriptor", id_descriptor);
-          q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-          q_link_descriptor_vstream.exec();
-        }
+      mysql_session.commit();
+    } catch (const mysqlx::Error& err)
+    {
+      mysql_session.rollback();
+      singleton.addLog(err.what());
+      return false;
     }
 
     if (!id_descriptor_to_data.empty())
     {
-      lock_guard<mutex> lock(singleton.mtx_task_config);
-      for (auto it = id_descriptor_to_data.begin(); it != id_descriptor_to_data.end(); ++it)
+      WriteLocker lock(singleton.mtx_task_config);
+      for (auto & it : id_descriptor_to_data)
       {
-        int id_descriptor = it.key();
-        singleton.id_descriptor_to_data[id_descriptor] = std::move(it.value());
+        int id_descriptor = it.first;
+        singleton.id_descriptor_to_data[id_descriptor] = std::move(it.second);
         singleton.id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
         singleton.id_descriptor_to_id_vstreams[id_descriptor].insert(id_vstream);
       }
@@ -1230,173 +1592,134 @@ bool ApiResource::addFaces(const QString& vstream_ext, const std::vector<int>& f
   return true;
 }
 
-bool ApiResource::removeFaces(const QString& vstream_ext, const std::vector<int>& face_ids)
+bool ApiService::removeFaces(const String& vstream_ext, const std::vector<int>& face_ids)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
     return false;
 
   int id_vstream = 0;
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
-    id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+    ReadLocker lock(singleton.mtx_task_config);
+    auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+    if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+      id_vstream = it->second;
   }
 
   if (id_vstream == 0)
     return true;
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
+  HashSet<int> id_descriptors;
+  HashSet<int> id_descriptors_remove;
 
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = singleton.sql_client->getSession();
+  try
   {
-    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
+    mysql_session.startTransaction();
+    auto stat_link_descriptor_vstream = mysql_session.sql(SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM);
+    auto stat_check_link = mysql_session.sql(SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM);
 
-  QSet<int> id_descriptors;
-  QSet<int> id_descriptors_remove;
-  QSqlQuery q_link_descriptor_vstream(sql_db);
-  if (!q_link_descriptor_vstream.prepare(SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_DESCRIPTOR_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_descriptor_vstream.lastError().text());
-    return false;
-  }
-
-  QSqlQuery q_check_link(sql_db);
-  if (!q_check_link.prepare(SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_check_link.lastError().text());
-    return false;
-  }
-
-  for (auto&& id_descriptor : face_ids)
-  {
-    q_link_descriptor_vstream.bindValue(":id_descriptor", id_descriptor);
-    q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-    q_link_descriptor_vstream.exec();
-    if (q_link_descriptor_vstream.numRowsAffected() > 0)
+    for (const auto& id_descriptor : face_ids)
     {
-      id_descriptors.insert(id_descriptor);
-      q_check_link.bindValue(":id_worker", singleton.id_worker);
-      q_check_link.bindValue(":id_descriptor", id_descriptor);
-      if (!q_check_link.exec())
+      auto result = stat_link_descriptor_vstream
+        .bind(id_descriptor)
+        .bind(id_vstream)
+        .execute();
+      if (result.getAffectedItemsCount() > 0)
       {
-        singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_CHECK_LINKS_DESCRIPTOR_VSTREAM", __FUNCTION__));
-        singleton.addLog(q_check_link.lastError().text());
-        return false;
+        id_descriptors.insert(id_descriptor);
+        if (!stat_check_link
+          .bind(singleton.id_worker)
+          .bind(id_descriptor)
+          .execute()
+          .fetchOne())
+          id_descriptors_remove.insert(id_descriptor);
       }
-      bool do_remove = !q_check_link.next();
-      if (do_remove)
-        id_descriptors_remove.insert(id_descriptor);
     }
-  }
 
-  if (!sql_transaction.commit())
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
+    mysql_session.rollback();
+    singleton.addLog(err.what());
     return false;
   }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
+    WriteLocker lock(singleton.mtx_task_config);
 
-    for (auto&& id_descriptor : id_descriptors)
+    for (const auto& id_descriptor : id_descriptors)
     {
-      singleton.id_descriptor_to_id_vstreams[id_descriptor].remove(id_vstream);
+      singleton.id_descriptor_to_id_vstreams[id_descriptor].erase(id_vstream);
       if (singleton.id_descriptor_to_id_vstreams[id_descriptor].empty())
-        singleton.id_descriptor_to_id_vstreams.remove(id_descriptor);
-      singleton.id_vstream_to_id_descriptors[id_vstream].remove(id_descriptor);
+        singleton.id_descriptor_to_id_vstreams.erase(id_descriptor);
+      singleton.id_vstream_to_id_descriptors[id_vstream].erase(id_descriptor);
       if (id_descriptors_remove.contains(id_descriptor))
-        singleton.id_descriptor_to_data.remove(id_descriptor);
+        singleton.id_descriptor_to_data.erase(id_descriptor);
     }
   }
 
   return true;
 }
 
-bool ApiResource::deleteFaces(const std::vector<int>& face_ids)
+bool ApiService::deleteFaces(const std::vector<int>& face_ids)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
     return false;
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
-
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = singleton.sql_client->getSession();
+  try
   {
-    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
+    mysql_session.startTransaction();
+    auto statement = mysql_session.sql(SQL_REMOVE_FACE_DESCRIPTOR);
+    for (const auto& id_descriptor : face_ids)
+      statement.bind(id_descriptor).execute();
 
-  QSqlQuery q_remove_face_descriptor(sql_db);
-  if (!q_remove_face_descriptor.prepare(SQL_REMOVE_FACE_DESCRIPTOR))
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
-    singleton.addLog(q_remove_face_descriptor.lastError().text());
-    return false;
-  }
-
-  for (auto&& id_descriptor : face_ids)
-  {
-    q_remove_face_descriptor.bindValue(":id_descriptor", id_descriptor);
-    if (!q_remove_face_descriptor.exec())
-    {
-      singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_FACE_DESCRIPTOR", __FUNCTION__));
-      singleton.addLog(q_remove_face_descriptor.lastError().text());
-      return false;
-    }
-  }
-
-  if (!sql_transaction.commit())
-  {
-    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
+    mysql_session.rollback();
+    singleton.addLog(err.what());
     return false;
   }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
+    WriteLocker lock(singleton.mtx_task_config);
 
-    for (auto&& id_descriptor : face_ids)
+    for (const auto& id_descriptor : face_ids)
     {
-      //удаляем привязку к видеопотокам
-      for (auto it = singleton.id_descriptor_to_id_vstreams[id_descriptor].constBegin(); it != singleton.id_descriptor_to_id_vstreams[id_descriptor].constEnd(); ++it)
-        singleton.id_vstream_to_id_descriptors[*it].remove(id_descriptor);
-      singleton.id_descriptor_to_id_vstreams.remove(id_descriptor);
+      //удаляем привязку к видео потокам
+      for (auto it = singleton.id_descriptor_to_id_vstreams[id_descriptor].cbegin(); it != singleton.id_descriptor_to_id_vstreams[id_descriptor].cend(); ++it)
+        singleton.id_vstream_to_id_descriptors[*it].erase(id_descriptor);
+      singleton.id_descriptor_to_id_vstreams.erase(id_descriptor);
 
       //удаляем дескриптор
-      singleton.id_descriptor_to_data.remove(id_descriptor);
+      singleton.id_descriptor_to_data.erase(id_descriptor);
     }
   }
 
   return true;
 }
 
-bool ApiResource::removeVStream(const QString& vstream_ext)
+bool ApiService::removeVStream(const String& vstream_ext)
 {
   Singleton& singleton = Singleton::instance();
-  if (!singleton.is_working)
+  if (!singleton.is_working.load(std::memory_order_relaxed))
     return false;
 
   int id_vstream = 0;
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
-    id_vstream = singleton.task_config.conf_vstream_ext_to_id_vstream.value(vstream_ext);
+    ReadLocker lock(singleton.mtx_task_config);
+    auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
+    if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+      id_vstream = it->second;
   }
 
   if (id_vstream == 0)
@@ -1405,93 +1728,506 @@ bool ApiResource::removeVStream(const QString& vstream_ext)
   //для теста
   //cout << "__id_vstream: " << id_vstream << endl;
 
-  SQLGuard sql_guard;
-  QSqlDatabase sql_db = QSqlDatabase::database(sql_guard.connectionName());
+  HashSet<int> id_descriptors_remove;
 
-  SqlTransaction sql_transaction(sql_guard.connectionName());
-  if (!sql_transaction.inTransaction())
+  auto mysql_session = singleton.sql_client->getSession();
+  try
   {
-    singleton.addLog(ERROR_SQL_START_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
-    return false;
-  }
+    mysql_session.startTransaction();
+    auto result = mysql_session.sql(SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM)
+      .bind(id_vstream)
+      .bind(id_vstream)
+      .execute();
+    for (auto row : result)
+    {
+      id_descriptors_remove.insert(row[0]);
 
-  QSet<int> id_descriptors_remove;
-  QSqlQuery q_link_descriptor_vstream(sql_db);
-  if (!q_link_descriptor_vstream.prepare(SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM))
-  {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_descriptor_vstream.lastError().text());
-    return false;
-  }
-  q_link_descriptor_vstream.bindValue(":id_vstream", id_vstream);
-  if (!q_link_descriptor_vstream.exec())
-  {
-    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_link_descriptor_vstream.lastError().text());
-    return false;
-  }
-  while (q_link_descriptor_vstream.next())
-  {
-    id_descriptors_remove.insert(q_link_descriptor_vstream.value("id_descriptor").toInt());
+      //для теста
+      //cout << "__descriptor to remove: " << q_link_descriptor_vstream.value("id_descriptor").toInt() << endl;
+    }
 
-    //для теста
-    //cout << "__descriptor to remove: " << q_link_descriptor_vstream.value("id_descriptor").toInt() << endl;
-  }
+    mysql_session.sql(SQL_REMOVE_LINK_WORKER_VSTREAM)
+      .bind(singleton.id_worker)
+      .bind(id_vstream)
+      .execute();
 
-  QSqlQuery q_remove_link_worker_vstream(sql_db);
-  if (!q_remove_link_worker_vstream.prepare(SQL_REMOVE_LINK_WORKER_VSTREAM))
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
   {
-    singleton.addLog(ERROR_SQL_PREPARE_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_remove_link_worker_vstream.lastError().text());
-    return false;
-  }
-  q_remove_link_worker_vstream.bindValue(":id_worker", singleton.id_worker);
-  q_remove_link_worker_vstream.bindValue(":id_vstream", id_vstream);
-  if (!q_remove_link_worker_vstream.exec())
-  {
-    singleton.addLog(ERROR_SQL_EXEC_IN_FUNCTION.arg("SQL_REMOVE_LINK_WORKER_VSTREAM", __FUNCTION__));
-    singleton.addLog(q_remove_link_worker_vstream.lastError().text());
-    return false;
-  }
-
-  if (!sql_transaction.commit())
-  {
-    singleton.addLog(ERROR_SQL_COMMIT_TRANSACTION_IN_FUNCTION.arg(__FUNCTION__));
-    singleton.addLog(sql_db.lastError().text());
+    mysql_session.rollback();
+    singleton.addLog(err.what());
     return false;
   }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_capture);
-    singleton.id_vstream_to_start_motion.remove(id_vstream);
-    singleton.id_vstream_to_end_motion.remove(id_vstream);
-    singleton.is_capturing.remove(id_vstream);
+    scoped_lock lock(singleton.mtx_capture);
+    singleton.id_vstream_to_start_motion.erase(id_vstream);
+    singleton.id_vstream_to_end_motion.erase(id_vstream);
+    singleton.is_capturing.erase(id_vstream);
   }
 
   //scope for lock mutex
   {
-    lock_guard<mutex> lock(singleton.mtx_task_config);
+    WriteLocker lock(singleton.mtx_task_config);
 
-    //удаляем привязки дескрипторов к видеопотоку и ненужные дескрипторы
-    singleton.id_vstream_to_id_descriptors.remove(id_vstream);
-    for (auto&& id_descriptor : id_descriptors_remove)
-      singleton.id_descriptor_to_data.remove(id_descriptor);
+    //удаляем привязки дескрипторов к видео потоку и ненужные дескрипторы
+    singleton.id_vstream_to_id_descriptors.erase(id_vstream);
+    for (const auto& id_descriptor : id_descriptors_remove)
+      singleton.id_descriptor_to_data.erase(id_descriptor);
 
     //удаляем конфиги видео потока
-    singleton.task_config.conf_id_vstream_to_vstream_ext.remove(id_vstream);
-    singleton.task_config.conf_vstream_ext_to_id_vstream.remove(vstream_ext);
-    singleton.task_config.conf_vstream_url.remove(id_vstream);
-    singleton.task_config.conf_vstream_callback_url.remove(id_vstream);
-    singleton.task_config.conf_vstream_region.remove(id_vstream);
-    singleton.task_config.vstream_conf_params.remove(id_vstream);
+    singleton.task_config.conf_id_vstream_to_vstream_ext.erase(id_vstream);
+    singleton.task_config.conf_vstream_ext_to_id_vstream.erase(vstream_ext);
+    singleton.task_config.conf_vstream_url.erase(id_vstream);
+    singleton.task_config.conf_vstream_callback_url.erase(id_vstream);
+    singleton.task_config.conf_vstream_region.erase(id_vstream);
+    singleton.task_config.vstream_conf_params.erase(id_vstream);
   }
 
   return true;
 }
 
-ApiResource::~ApiResource()
+std::tuple<int, String> ApiService::addSpecialGroup(const String& group_name, int max_descriptor_count)
 {
-  beingDeleted();
+  Singleton& singleton = Singleton::instance();
+  if (!singleton.is_working.load(std::memory_order_relaxed))
+    return {};
+
+  boost::uuids::random_generator gen;
+  boost::uuids::uuid id = gen();
+  String token = boost::uuids::to_string(id);
+  int id_sgroup{};
+
+  try
+  {
+    auto mysql_session = singleton.sql_client->getSession();
+    auto result = mysql_session.sql(SQL_ADD_SPECIAL_GROUP)
+      .bind(group_name)
+      .bind(token)
+      .bind(max_descriptor_count)
+      .execute();
+    id_sgroup = static_cast<int>(result.getAutoIncrementValue());
+  } catch (const mysqlx::Error& err)
+  {
+    singleton.addLog(absl::Substitute(ERROR_SQL_EXEC_IN_FUNCTION, "SQL_ADD_SPECIAL_GROUP", __FUNCTION__));
+    singleton.addLog(err.what());
+    return {};
+  }
+
+  //scope for lock mutex
+  {
+    WriteLocker lock(singleton.mtx_task_config);
+    singleton.task_config.conf_token_to_sgroup[token] = id_sgroup;
+    singleton.task_config.conf_sgroup_max_descriptor_count[id_sgroup] = max_descriptor_count;
+  }
+
+  return {id_sgroup, token};
+}
+
+bool ApiService::updateSpecialGroup(int id_sgroup, const String& group_name, int max_descriptor_count)
+{
+  Singleton& singleton = Singleton::instance();
+  if (!singleton.is_working.load(std::memory_order_relaxed))
+    return {};
+
+  try
+  {
+    auto mysql_session = singleton.sql_client->getSession();
+
+    auto result = mysql_session.sql(SQL_UPDATE_SPECIAL_GROUP)
+      .bind(group_name)
+      .bind(max_descriptor_count)
+      .bind(id_sgroup)
+      .execute();
+  } catch (const mysqlx::Error& err)
+  {
+    singleton.addLog(absl::Substitute(ERROR_SQL_EXEC_IN_FUNCTION, "SQL_UPDATE_SPECIAL_GROUP", __FUNCTION__));
+    singleton.addLog(err.what());
+    return {};
+  }
+
+  //scope for lock mutex
+  {
+    WriteLocker lock(singleton.mtx_task_config);
+    singleton.task_config.conf_sgroup_max_descriptor_count[id_sgroup] = max_descriptor_count;
+  }
+
+  return true;
+}
+
+void ApiService::handleSGroupRequest(const crow::request& request, crow::response& response, const String& api_method_sgroup)
+{
+  Singleton& singleton = Singleton::instance();
+
+  //проверяем авторизацию
+  auto auth = request.get_header_value(String(API::AUTH_HEADER));
+  if (!auth.starts_with(API::AUTH_TYPE))
+  {
+    simpleResponse(API::CODE_UNAUTHORIZED, response);
+    return;
+  }
+
+  auto token = absl::ClippedSubstr(auth, API::AUTH_TYPE.size());
+  int id_sgroup{};
+  String comments;
+  int conf_max_descriptor_count = TaskConfig::DEFAULT_SG_MAX_DESCRIPTOR_COUNT;
+  int current_descriptor_count{};
+
+  //scope for lock mutex
+  {
+    ReadLocker lock(singleton.mtx_task_config);
+
+    auto it = singleton.task_config.conf_token_to_sgroup.find(token);
+    if (it != singleton.task_config.conf_token_to_sgroup.end())
+    {
+      id_sgroup = it->second;
+      comments = singleton.getConfigParamValue<String>(CONF_COMMENTS_URL_IMAGE_ERROR);
+    }
+
+    auto it2 = singleton.task_config.conf_sgroup_max_descriptor_count.find(id_sgroup);
+    if (it2 != singleton.task_config.conf_sgroup_max_descriptor_count.end())
+      conf_max_descriptor_count = it2->second;
+
+    auto it3 = singleton.id_sgroup_to_id_descriptors.find(id_sgroup);
+    if (it3 != singleton.id_sgroup_to_id_descriptors.end())
+      current_descriptor_count = static_cast<int>(it3->second.size());
+  }
+
+  if (id_sgroup == 0)
+  {
+    simpleResponse(API::CODE_UNAUTHORIZED, response);
+    return;
+  }
+
+  auto api_function = absl::AsciiStrToLower(api_method_sgroup);
+
+  //проверка корректности структуры тела запроса (JSON)
+  auto json = crow::json::load(request.body);
+  if (!request.body.empty() && json.error())
+  {
+    crow::json::wvalue json_error;
+    int code = API::CODE_ERROR;
+    json_error[API::P_CODE] = code;
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
+    response.code = code;
+    response.body = json_error.dump();
+    return;
+  }
+
+  //обработка запросов
+  response.set_header(API::CONTENT_TYPE, API::MIME_TYPE);
+  response.code = API::CODE_NO_CONTENT;
+
+  if (api_function == absl::AsciiStrToLower(API::SG_REGISTER_FACE))
+  {
+    if (current_descriptor_count >= conf_max_descriptor_count)
+    {
+      simpleResponse(API::CODE_FORBIDDEN, absl::Substitute(API::ERROR_SGROUP_MAX_DESCRIPTOR_COUNT_LIMIT, conf_max_descriptor_count),
+        response);
+      return;
+    }
+
+    if (!checkInputParam(json, response, API::P_URL))
+      return;
+
+    String url = jsonString(json, API::P_URL);
+    String image_base64;
+    if (url.starts_with("data:"))
+    {
+      auto pos_comma = url.find(',');
+      if (pos_comma != std::string::npos)
+        if (url.find(";base64,") != std::string::npos)
+        {
+          image_base64 = url.substr(pos_comma + 1);
+          url = url.substr(0, pos_comma);
+        }
+
+      if (image_base64.empty())
+      {
+        crow::json::wvalue json_error;
+        int code = API::CODE_ERROR;
+        json_error[API::P_CODE] = code;
+        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_URL);
+        response.code = code;
+        response.body = json_error.dump();
+        return;
+      }
+    }
+
+    int face_left = jsonInteger(json, API::P_FACE_LEFT);
+    int face_top = jsonInteger(json, API::P_FACE_TOP);
+    int face_width = jsonInteger(json, API::P_FACE_WIDTH);
+    int face_height = jsonInteger(json, API::P_FACE_HEIGHT);
+
+    auto s_url = image_base64.empty() ? url : "base64";
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_REGISTER_FACE, API::SG_REGISTER_FACE, id_sgroup, s_url,
+      face_left, face_top, face_width, face_height));
+
+    auto task_data = TaskData(0, TASK_REGISTER_DESCRIPTOR);
+    task_data.id_sgroup = id_sgroup;
+    task_data.is_base64 = !image_base64.empty();
+    if (task_data.is_base64)
+      task_data.frame_url = std::move(image_base64);
+    else
+      task_data.frame_url = std::move(url);
+    auto rd = std::make_shared<RegisterDescriptorResponse>();
+    rd->comments = std::move(comments);
+    rd->face_left = face_left;
+    rd->face_top = face_top;
+    rd->face_width = face_width;
+    rd->face_height = face_height;
+
+    processFrame(task_data, rd, nullptr).get();
+
+    crow::json::wvalue json_response;
+    int code = API::CODE_SUCCESS;
+    if (rd->id_descriptor > 0)
+    {
+      std::vector<uchar> buff_;
+      cv::imencode(".jpg", rd->face_image, buff_);
+      String mime_type = "image/jpeg";
+      crow::json::wvalue json_data;
+      json_data[API::P_FACE_ID] = rd->id_descriptor;
+      json_data[API::P_FACE_LEFT] = rd->face_left;
+      json_data[API::P_FACE_TOP] = rd->face_top;
+      json_data[API::P_FACE_WIDTH] = rd->face_width;
+      json_data[API::P_FACE_HEIGHT] = rd->face_height;
+      json_data[API::P_FACE_IMAGE] = absl::Substitute("data:$0;base64,$1", mime_type,
+        absl::Base64Escape(String((const char *)(buff_.data()), buff_.size())));
+
+      json_response = {
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, json_data}
+      };
+    } else
+    {
+      code = API::CODE_ERROR;
+      json_response = {
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, rd->comments}
+      };
+    }
+
+    response.code = code;
+    response.body = json_response.dump();
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SG_DELETE_FACES))
+  {
+    if (!checkInputParam(json, response, API::P_FACE_IDS))
+      return;
+
+    std::vector<int> face_ids;
+    auto face_ids_list = json[API::P_FACE_IDS];
+    for (const auto& json_value : face_ids_list)
+    {
+      int id_descriptor = jsonInteger(json_value);
+      if (id_descriptor > 0)
+        face_ids.push_back(id_descriptor);
+    }
+    auto face_ids_list2 = absl::StrJoin(face_ids, ", ");
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_DELETE_FACES, API::DELETE_FACES, id_sgroup, face_ids_list2));
+    bool is_ok2 = sgDeleteFaces(id_sgroup, face_ids);
+    int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
+    simpleResponse(code, response);
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SG_LIST_FACES))
+  {
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_SIMPLE_METHOD, API::SG_LIST_FACES, id_sgroup));
+
+    crow::json::wvalue::list json_data;
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_GET_SG_FACE_DESCRIPTORS)
+        .bind(id_sgroup)
+        .execute();
+      for (auto row : result.fetchAll())
+      {
+        int id_descriptor = row[0];
+        String face_image = row[1].get<std::string>();
+        json_data.push_back({
+          {API::P_FACE_ID, id_descriptor},
+          {API::P_FACE_IMAGE, std::move(face_image)}
+        });
+      }
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_GET_SG_FACE_DESCRIPTORS"));
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    if (!json_data.empty())
+    {
+      int code = API::CODE_SUCCESS;
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_DATA, json_data}
+      };
+      response.code = code;
+      response.body = json_response.dump();
+    }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SG_UPDATE_GROUP))
+  {
+    if (!checkInputParam(json, response, API::P_CALLBACK_URL))
+      return;
+
+    String callback_url = jsonString(json, API::P_CALLBACK_URL);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_UPDATE_GROUP, API::SG_UPDATE_GROUP, id_sgroup, callback_url));
+
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_UPDATE_SGROUP_CALLBACK)
+        .bind(callback_url)
+        .bind(id_sgroup)
+        .execute();
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_UPDATE_SGROUP_CALLBACK"));
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    //scope for lock mutex
+    {
+      WriteLocker lock(singleton.mtx_task_config);
+      singleton.task_config.conf_sgroup_callback_url[id_sgroup] = callback_url;
+    }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SG_RENEW_TOKEN))
+  {
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SG_SIMPLE_METHOD, API::SG_RENEW_TOKEN, id_sgroup));
+
+    boost::uuids::random_generator gen;
+    boost::uuids::uuid id = gen();
+    String new_token = boost::uuids::to_string(id);
+
+    try
+    {
+      auto mysql_session = singleton.sql_client->getSession();
+      auto result = mysql_session.sql(SQL_UPDATE_SGROUP_TOKEN)
+        .bind(new_token)
+        .bind(id_sgroup)
+        .execute();
+    } catch (const mysqlx::Error& err)
+    {
+      singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_UPDATE_SGROUP_TOKEN"));
+      singleton.addLog(err.what());
+      simpleResponse(API::CODE_SERVER_ERROR, response);
+      return;
+    }
+
+    //scope for lock mutex
+    {
+      WriteLocker lock(singleton.mtx_task_config);
+
+      //удаляем токен авторизации специальной группы
+      auto it = std::find_if(singleton.task_config.conf_token_to_sgroup.begin(), singleton.task_config.conf_token_to_sgroup.end(),
+        [id_sgroup](auto&& p)
+        {
+          return p.second == id_sgroup;
+        });
+      if (it != singleton.task_config.conf_token_to_sgroup.end())
+        singleton.task_config.conf_token_to_sgroup.erase(it);
+
+      //добавляем новый токен авторизации специальной группы
+      singleton.task_config.conf_token_to_sgroup[new_token] = id_sgroup;
+    }
+
+    int code = API::CODE_SUCCESS;
+    crow::json::wvalue json_response{
+      {API::P_CODE, code},
+      {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+      {API::P_MESSAGE, API::MSG_DONE},
+      {
+        API::P_DATA,
+        {
+          {API::P_SG_API_TOKEN, new_token}
+        }
+      }
+    };
+
+    response.code = code;
+    response.body = json_response.dump();
+
+    return;
+  }
+
+  int code = API::CODE_ERROR;
+  crow::json::wvalue json_error{
+    {API::P_CODE, code},
+    {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}
+  };
+  response.code = code;
+  response.body = json_error.dump();
+}
+
+bool ApiService::sgDeleteFaces(int id_sgroup, const std::vector<int>& face_ids)
+{
+  Singleton& singleton = Singleton::instance();
+  if (!singleton.is_working.load(std::memory_order_relaxed))
+    return false;
+
+  vector<int> id_descriptors_remove;
+  auto mysql_session = singleton.sql_client->getSession();
+  try
+  {
+    mysql_session.startTransaction();
+    auto statement = mysql_session.sql(SQL_REMOVE_SG_FACE_DESCRIPTOR);
+    for (const auto& id_descriptor : face_ids)
+      if (statement
+      .bind(id_descriptor)
+      .bind(id_sgroup)
+      .execute().getAffectedItemsCount() > 0)
+        id_descriptors_remove.emplace_back(id_descriptor);
+
+    mysql_session.commit();
+  } catch (const mysqlx::Error& err)
+  {
+    mysql_session.rollback();
+    singleton.addLog(err.what());
+    return false;
+  }
+
+  //scope for lock mutex
+  {
+    WriteLocker lock(singleton.mtx_task_config);
+
+    auto it_sgroup = singleton.id_sgroup_to_id_descriptors.find(id_sgroup);
+    if (it_sgroup != singleton.id_sgroup_to_id_descriptors.end())
+      for (const auto& id_descriptor : id_descriptors_remove)
+      {
+        //удаляем привязку к специальной группе
+        it_sgroup->second.erase(id_descriptor);
+
+        //удаляем дескриптор
+        singleton.id_descriptor_to_data.erase(id_descriptor);
+      }
+  }
+
+  return true;
 }

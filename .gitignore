@@ -1,9 +1,12 @@
 /*
 !.gitignore
+!.gitmodules
 !CMakeLists.txt
 !readme.md
+!changes.md
 !*.cpp
 !*.h
 !mysql/
 !opt/
 !apidoc/
+!contrib/

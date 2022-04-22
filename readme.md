@@ -17,39 +17,131 @@ $ sudo apt-get -y install cuda-drivers-465 --no-install-recommends
 ```
 Перезагрузить систему.
 
-## Установка MySQL, Qt5, OpenCV и некоторых других зависимостей
+## Установка зависимостей
 ```bash
 $ sudo apt-get update
 $ sudo apt-get --yes upgrade
-$ sudo apt-get --yes install libmysqlclient-dev qt5-default libqt5sql5-mysql libopencv-dev gcc g++ libboost-all-dev cmake doxygen libssl-dev libpq-dev libssl-dev libfcgi-dev
+$ sudo apt-get --yes install ninja-build cmake build-essential libssl-dev rapidjson-dev
 ```
-### Установка фреймворка Wt
+### Установка Clang
+Для сборки проекта требуется Clang версии 14 или выше. Установка описана [здесь](https://apt.llvm.org/). Мы воспользуемся предлагаемым автоматическим скриптом:
+```bash
+$ sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+$ sudo ldconfig
+```
+### Сборка и установка libc++
+За основу берём шаги из [документации](https://libcxx.llvm.org/BuildingLibcxx.html#the-default-build).
 ```bash
 $ cd ~
-$ wget -c https://github.com/emweb/wt/archive/4.5.0.tar.gz
-$ tar xvxf 4.5.0.tar.gz
-$ cd ./wt-4.5.0/
-$ mkdir build && cd build
-$ cmake ..
-$ make -j$(nproc)
+$ export CC=clang
+$ export CXX=clang++
+$ git clone https://github.com/llvm/llvm-project.git
+$ cd llvm-project
+$ mkdir build
+$ cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+$ ninja -C build cxx cxxabi unwind
+$ sudo ninja -C build install-cxx install-cxxabi install-unwind
+$ export CXXFLAGS=-stdlib=libc++
+```
+### Сборка и установка Boost
+```bash
+$ cd ~
+$ wget https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.zip
+$ unzip boost_1_79_0.zip
+$ cd boost_1_79_0/tools/build
+$ ./bootstrap.sh
+$ sudo ./b2 install --prefix=/usr/local
+$ cd ~/boost_1_79_0
+$ sudo b2 --build-dir=./build --with-filesystem --with-program_options --with-system --with-thread --with-date_time toolset=clang variant=release link=static runtime-link=static cxxflags="-std=c++20 -stdlib=libc++" linkflags="-stdlib=libc++" release install
+```
+### Сборка OpenCV
+```bash
+$ cd ~
+$ wget https://github.com/opencv/opencv/archive/4.5.5.zip
+$ unzip 4.5.5.zip
+$ cd opencv-4.5.5
+$ mkdir build
+$ cd build
+$ cmake \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_CXX_COMPILER=clang++ \
+-DCMAKE_C_COMPILER=clang \
+-DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+-DCMAKE_CXX_STANDARD=20 \
+-DBUILD_SHARED_LIBS=OFF \
+-DBUILD_LIST="core,imgcodecs,calib3d,imgproc" \
+-DOPENCV_ENABLE_NONFREE=ON \
+-DBUILD_PERF_TESTS=OFF \
+-DBUILD_TESTS=OFF \
+-DBUILD_ZLIB=ON \
+-DBUILD_OPENEXR=OFF \
+-DBUILD_JPEG=ON \
+-DBUILD_OPENJPEG=ON \
+-DBUILD_PNG=ON \
+-DBUILD_WEBP=ON \
+-DBUILD_PACKAGE=OFF \
+-DCMAKE_CONFIGURATION_TYPES="Release" \
+-DBUILD_JAVA=OFF \
+-DBUILD_opencv_python3=OFF \
+-DBUILD_opencv_python_bindings_generator=OFF \
+-DBUILD_opencv_python_tests=OFF \
+-DWITH_FFMPEG=OFF \
+-DWITH_GSTREAMER=OFF \
+-DWITH_GTK=OFF \
+-DWITH_OPENGL=OFF \
+-DWITH_1394=OFF \
+-DWITH_ADE=OFF \
+-DWITH_OPENEXR=OFF \
+-DWITH_PROTOBUF=OFF \
+-DWITH_QUIRC=OFF \
+-DWITH_TIFF=OFF \
+-DWITH_V4L=OFF \
+-DWITH_VA=OFF \
+-DWITH_VA_INTEL=OFF \
+-DWITH_VTK=OFF \
+-DWITH_OPENCL=OFF \
+..
+$ make -j`nproc`
+```
+### Сборка клиентских библиотек NVIDIA Triton™ Inference Server
+Для сборки требуется CMake версии не ниже 3.17.3. Если установленная версия ниже, то потребуется сборка и установка более свежей версии:
+```bash
+$ cd ~
+$ wget https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1.tar.gz
+$ tar -zxvf cmake-3.23.1.tar.gz
+$ cd cmake-3.23.1
+$ cmake .
+$ make -j`nproc`
 $ sudo make install
 $ sudo ldconfig
 ```
-### Клиентские библиотеки Triton Inference Server
+Клиентские библиотеки:
 ```bash
 $ cd ~
-$ mkdir triton_client && cd ./triton_client/
-$ wget -c https://github.com/triton-inference-server/server/releases/download/v2.10.0/v2.10.0_ubuntu2004.clients.tar.gz
-$ tar xvxf v2.10.0_ubuntu2004.clients.tar.gz
+$ git clone https://github.com/triton-inference-server/client.git triton-client
+$ cd triton-client
+$ git checkout r21.05
+$ mkdir build
+$ cd build
+$ cmake -DCMAKE_CXX_STANDARD=20 -DCMAKE_INSTALL_PREFIX=`pwd`/install -DCMAKE_BUILD_TYPE=Release -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_CC_GRPC=OFF -DTRITON_ENABLE_PERF_ANALYZER=OFF -DTRITON_ENABLE_PYTHON_HTTP=OFF -DTRITON_ENABLE_PYTHON_GRPC=OFF -DTRITON_ENABLE_GPU=OFF -DTRITON_ENABLE_EXAMPLES=OFF -DTRITON_ENABLE_TESTS=OFF -DTRITON_COMMON_REPO_TAG=r21.05 -DTRITON_THIRD_PARTY_REPO_TAG=r21.05 ..
+$ make cc-clients -j`nproc`
+```
+При сборке компилятором clang возникнет ошибка (баг?) в файле **~/triton-client/build/cc-clients/_deps/repo-common-src/src/table_printer.cc**
+Необходимо строку:
+**return std::move(table.str());**
+заменить на:
+**return table.str();**
+и повторить команду
+```bash
+$ make cc-clients -j`nproc`
 ```
 ## Сборка FRS
 ```bash
-$ cd ~
-$ git clone https://github.com/rosteleset/frs.git
-$ cd frs
-$ mkdir build && cd build
-$ cmake -DCMAKE_BUILD_TYPE=Release ..
-$ make -j$(nproc)
+$ cd ~/frs
+$ mkdir build
+$ cd build
+$ cmake -DCMAKE_BUILD_TYPE=Release -DOpenCV_DIR:PATH=$HOME/opencv-4.5.5/build -DTRITON_CLIENT_DIR:PATH=$HOME/triton-client/build/install -DCURL_ZLIB=OFF -DBoost_USE_STATIC_RUNTIME=ON ..
+$ make -j`nproc`
 ```
 - Создать директорию, например, **/opt/frs**, дать права на чтение и запись пользователю. Созданный исполняемый файл **frs** поместить в **/opt/frs**
 - Скопировать содержимое директории из репозитория ~/frs/opt в **/opt/frs**
@@ -136,8 +228,11 @@ $ /opt/frs/run_frs
 ```bash
 $ cd ~/frs/apidoc
 $ ./create_apidoc
+$ ./create_apidoc_sg
 ```
-Файлы появятся в директории *~/frs/www/apidoc*. Если их поместить в директорию */opt/frs/www/apidoc*, то документация будет доступна по URL: *http://localhost:9051/apidoc/*
+Файлы появятся в директориях *~/frs/www/apidoc* и *~/frs/www/apidoc_sg*. Если их поместить в директории */opt/frs/static/apidoc* и */opt/frs/static/apidoc_sg* соответственно, то документация будет доступна по URL:
+*http://localhost:9051/static/apidoc/*
+*http://localhost:9051/static/apidoc_sg/*
 ## Советы по подбору GPU
 - **Память GPU**
 Чем больше памяти, тем больше моделей нейронных сетей могут быть использованы одновременно в TIS. Мы используем видеокарту с памятью 4 Гб .
@@ -146,3 +241,5 @@ $ ./create_apidoc
 Когда TensorRT создает план инференса модели (model.plan), то, чем выше compute capability, тем больше типов слоев нейронной сети будут обрабатываться на GPU.
 
 С помощью утилиты **perf_analyzer** (поставляется с клиентскими библиотеками TIS) мы проводили тесты инференса используемых в FRS моделей нейронных сетей в Yandex Cloud (Tesla V100, 32Gb, 5120 CUDA cores) и GTX 1650 (4Gb, 896 CUDA cores). Тесты показали, что V100 работает, примерно, в полтора раза быстрее. Но стоит она сильно больше. У V100 также есть преимущество по количеству памяти и в нее можно загрузить больше моделей. Значительная разница в количестве ядер CUDA (5120 против 896) не так существенно сказывается на производительности инференса. Что касается минимальных требований к FRS, то подойдет любая видео карта от GTX 1050 с памятью 4Гб и выше.
+## История изменений
+Историю изменений, начиная с версии 1.1.0, можно посмотреть [здесь](https://github.com/rosteleset/frs/blob/master/changes.md).

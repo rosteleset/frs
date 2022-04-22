@@ -56,7 +56,24 @@ CREATE TABLE `face_descriptors` (
   `date_start` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Дата начала использования дескриптора',
   `date_last` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Дата последнего использования дескриптора',
   UNIQUE KEY `person_descriptors_descriptor_IDX` (`id_descriptor`) USING BTREE
-) ENGINE=InnoDB AUTO_INCREMENT=118873 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Биометрические парметры (дескрипторы) лиц';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Биометрические парметры (дескрипторы) лиц';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `link_descriptor_sgroup`
+--
+
+DROP TABLE IF EXISTS `link_descriptor_sgroup`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `link_descriptor_sgroup` (
+  `id_descriptor` int NOT NULL,
+  `id_sgroup` int NOT NULL,
+  UNIQUE KEY `link_descriptor_sgroup_id_descriptor_id_sgroup_uindex` (`id_descriptor`,`id_sgroup`),
+  KEY `link_descriptor_sgroup_special_groups_id_special_group_fk` (`id_sgroup`),
+  CONSTRAINT `link_descriptor_sgroup_face_descriptors_id_descriptor_fk` FOREIGN KEY (`id_descriptor`) REFERENCES `face_descriptors` (`id_descriptor`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `link_descriptor_sgroup_special_groups_id_special_group_fk` FOREIGN KEY (`id_sgroup`) REFERENCES `special_groups` (`id_special_group`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Привязка дескриптора к специальной группе';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -128,7 +145,7 @@ CREATE TABLE `log_delivery_events` (
   UNIQUE KEY `log_delivery_events_id_vstream_IDX` (`id_vstream`,`id_descriptor`,`log_date`) USING BTREE,
   KEY `log_delivery_events_log_date_IDX` (`log_date`) USING BTREE,
   KEY `log_delivery_events_id_descriptor_IDX` (`id_descriptor`,`log_date`) USING BTREE
-) ENGINE=InnoDB AUTO_INCREMENT=595490 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Журнал доставки событий';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Журнал доставки событий';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -150,12 +167,32 @@ CREATE TABLE `log_faces` (
   `face_width` int DEFAULT NULL COMMENT 'Ширина прямоугольной области лица',
   `face_height` int DEFAULT NULL COMMENT 'Высота прямоугольной области лица',
   PRIMARY KEY (`id_log`),
-  UNIQUE KEY `log_IDX` (`id_vstream`,`log_date`) USING BTREE,
+  UNIQUE KEY `log_IDX` (`id_vstream`,`log_date`,`id_descriptor`),
   KEY `log_date_IDX` (`log_date`) USING BTREE,
   KEY `log_faces_FK` (`id_descriptor`),
+  KEY `log_faces_FK2` (`id_vstream`),
   CONSTRAINT `log_faces_FK` FOREIGN KEY (`id_descriptor`) REFERENCES `face_descriptors` (`id_descriptor`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `log_FK` FOREIGN KEY (`id_vstream`) REFERENCES `video_streams` (`id_vstream`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5285382 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Журнал событий лиц';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Журнал событий лиц';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `special_groups`
+--
+
+DROP TABLE IF EXISTS `special_groups`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `special_groups` (
+  `id_special_group` int NOT NULL AUTO_INCREMENT COMMENT 'Идентификатор специальной группы',
+  `group_name` varchar(200) NOT NULL COMMENT 'Название специальной группы',
+  `sg_api_token` varchar(64) NOT NULL COMMENT 'Токен для работы с api методами специальной группы',
+  `callback_url` varchar(200) DEFAULT NULL COMMENT 'URL для вызова при возникновении события распознавания лица',
+  `max_descriptor_count` int NOT NULL DEFAULT '1000' COMMENT 'Максимальное количество дескрипторов в специальной группе',
+  PRIMARY KEY (`id_special_group`),
+  UNIQUE KEY `special_groups_group_name_uindex` (`group_name`),
+  UNIQUE KEY `special_groups_sg_api_token_uindex` (`sg_api_token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Специальные группы с обработкой на всех видео потоках';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -194,7 +231,7 @@ CREATE TABLE `video_streams` (
   `region_height` int DEFAULT '0' COMMENT 'Высота рабочей области кадра',
   PRIMARY KEY (`id_vstream`),
   UNIQUE KEY `video_streams_UN` (`vstream_ext`)
-) ENGINE=InnoDB AUTO_INCREMENT=1248 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Информация о видеопотоках';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Информация о видеопотоках';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
@@ -224,7 +261,7 @@ CREATE TABLE `workers` (
   `url` varchar(200) NOT NULL COMMENT 'URL рабочего сервера FRS',
   PRIMARY KEY (`id_worker`),
   UNIQUE KEY `workers_UN` (`url`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Рабочие сервера FRS';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Рабочие сервера FRS';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -235,5 +272,3 @@ CREATE TABLE `workers` (
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
-
--- Dump completed on 2021-10-18 13:30:22

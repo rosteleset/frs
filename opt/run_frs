@@ -1,2 +1,2 @@
 #!/bin/bash
-/opt/frs/frs --docroot /opt/frs/www --http-address 0.0.0.0 --http-port 9051 --approot /opt/frs --accesslog=/opt/frs/access.log --frs-config /opt/frs/sample.config 2>>/opt/frs/errors.txt
+/opt/frs/frs --frs-config /opt/frs/sample.config 2>>/opt/frs/errors.txt
