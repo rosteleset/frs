@@ -49,6 +49,7 @@ enum TaskType
   TASK_RECOGNIZE,
   TASK_REGISTER_DESCRIPTOR,
   TASK_PROCESS_FRAME,
+  TASK_CHECK_MOTION,
   TASK_TEST
 };
 
@@ -146,10 +147,15 @@ const constexpr char* CONF_MARGIN = "margin";  // = 5.0;  //отступ в пр
 const constexpr char* CONF_DESCRIPTOR_INACTIVITY_PERIOD = "descriptor-inactivity-period";  // = 400;  //период неактивности дескриптора в днях, спустя который он удаляется
 const constexpr char* CONF_BEST_QUALITY_INTERVAL_BEFORE = "best-quality-interval-before";  // = 5.0;  //период в секундах до временной точки для поиска лучшего кадра
 const constexpr char* CONF_BEST_QUALITY_INTERVAL_AFTER = "best-quality-interval-after";  // = 2.0;  //период в секундах после временной точки для поиска лучшего кадра
+const constexpr char* TYPE_BOOL = "bool";
+const constexpr char* TYPE_INT = "int";
+const constexpr char* TYPE_DOUBLE = "double";
+const constexpr char* TYPE_STRING = "string";
 
 //для детекции движения
 const constexpr char* CONF_PROCESS_FRAMES_INTERVAL = "process-frames-interval";  // = 1.0  // интервал в секундах, втечение которого обрабатываются кадры после окончания детекции движения
 const constexpr char* CONF_DELAY_BETWEEN_FRAMES = "delay-between-frames";  // = 1.0  // интервал в секундах между захватами кадров после детекции движения
+const constexpr char* CONF_OPEN_DOOR_DURATION = "open-door-duration";   // = 5.0  // время открытия двери в секундах
 
 //пороговые значения параметров roll, yaw, pitch, которые задают интервал в градусах, для определения фронтальности лица
 const constexpr char* CONF_ROLL_THRESHOLD = "roll-threshold";  // = 45.0;  //интервал (-conf-roll_threshold; +conf_roll_threshold)
@@ -239,15 +245,14 @@ const constexpr char* SQL_GET_VIDEO_STREAM_SETTINGS = R"_SQL_(
       and lw.id_worker = ?
 )_SQL_";
 
-/*const constexpr char* SQL_GET_VIDEO_STREAM_PARAM = R"_SQL_(
-  select
-    *
-  from
-    video_stream_settings
+const constexpr char* SQL_SET_COMMON_PARAM = R"_SQL_(
+  update
+    common_settings
+  set
+    param_value = ?
   where
-    id_vstream = ?
-    and param_name = ?
-)_SQL_";*/
+    param_name = ?
+)_SQL_";
 
 const constexpr char* SQL_SET_VIDEO_STREAM_PARAM = R"_SQL_(
   insert into
@@ -259,14 +264,6 @@ const constexpr char* SQL_SET_VIDEO_STREAM_PARAM = R"_SQL_(
   on duplicate key update
     param_value = ?
 )_SQL_";
-
-/*const constexpr char* SQL_REMOVE_VIDEO_STREAM_PARAM = R"_SQL_(
-  delete from
-    video_stream_settings
-  where
-    id_vstream = ?
-    and param_name = ?
-)_SQL_";*/
 
 const constexpr char* SQL_ADD_VSTREAM = R"_SQL_(
   insert into
@@ -603,6 +600,7 @@ public:
   HashSet<int> is_capturing;
   HashMap<int, time_point> id_vstream_to_start_motion;  //время последней детекции начала движения
   HashMap<int, time_point> id_vstream_to_end_motion;  //время последней детекции окончания движения
+  HashSet<int> is_door_open;  //информация об открытой двери
   String working_path = "./";  //рабочая директория
 
   //для сбора статистики инференса

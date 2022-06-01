@@ -1,10 +1,9 @@
-
 /**
- * @api {post} /addStream Добавить видео поток
+ * @api {post} /api/addStream Добавить видео поток
  * @apiPrivate
  * @apiName addStream
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -20,7 +19,9 @@
  *   "beta",
  *   "blur",
  *   "blur-max",
+ *   "callback-timeout",
  *   "capture-timeout",
+ *   "clear-old-log-faces",
  *   "comments-blurry-face",
  *   "comments-descriptor-creation-error",
  *   "comments-descriptor-exists",
@@ -34,15 +35,34 @@
  *   "delay-between-frames",
  *   "descriptor-inactivity-period",
  *   "dnn-fc-inference-server",
+ *   "dnn-fc-input-height",
+ *   "dnn-fc-input-tensor-name",
+ *   "dnn-fc-input-width",
+ *   "dnn-fc-model-name",
+ *   "dnn-fc-output-size",
+ *   "dnn-fc-output-tensor-name",
  *   "dnn-fd-inference-server",
+ *   "dnn-fd-input-height",
+ *   "dnn-fd-input-tensor-name",
+ *   "dnn-fd-input-width",
+ *   "dnn-fd-model-name",
  *   "dnn-fr-inference-server",
+ *   "dnn-fr-input-height",
+ *   "dnn-fr-input-tensor-name",
+ *   "dnn-fr-input-width",
+ *   "dnn-fr-model-name",
+ *   "dnn-fr-output-size",
+ *   "dnn-fr-output-tensor-name",
  *   "face-class-confidence",
  *   "face-confidence",
  *   "face-enlarge-scale",
+ *   "flag-copy-event-data",
  *   "gamma",
+ *   "log-faces-live-interval",
  *   "logs-level",
  *   "margin",
  *   "max-capture-error-count",
+ *   "open-door-duration",
  *   "pitch-threshold",
  *   "process-frames-interval",
  *   "region-x",
@@ -73,11 +93,11 @@
 
 
 /**
- * @api {post} /listStreams Получить список видео потоков и идентификаторов дескрипторов
+ * @api {post} /api/listStreams Получить список видео потоков и идентификаторов дескрипторов
  * @apiPrivate
  * @apiName listStreams
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -103,11 +123,11 @@
 
 
 /**
- * @api {post} /removeStream Убрать видео поток
+ * @api {post} /api/removeStream Убрать видео поток
  * @apiPrivate
  * @apiName removeStream
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -128,11 +148,11 @@
 
 
 /**
- * @api {post} /motionDetection Уведомление о детекции движения
+ * @api {post} /api/motionDetection Уведомление о детекции движения
  * @apiPrivate
  * @apiName motionDetection
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -151,11 +171,32 @@
 
 
 /**
- * @api {post} /bestQuality Получить "лучший" кадр из журнала FRS
+ * @api {post} /api/doorIsOpen Уведомление об открытии двери
+ * @apiPrivate
+ * @apiName doorIsOpen
+ * @apiGroup Host-->FRS
+ * @apiVersion 1.1.1
+ *
+ * @apiDescription **[в работе]**
+ *
+ * @apiParam {String} streamId идентификатор видео потока
+ *
+ * @apiParamExample {json} Пример использования
+ * {
+ *   "streamId": "1234"
+ * }
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ */
+
+
+/**
+ * @api {post} /api/bestQuality Получить "лучший" кадр из журнала FRS
  * @apiPrivate
  * @apiName bestQuality
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -191,11 +232,11 @@
 
 
 /**
- * @api {post} /getEvents Получить список событий из журнала FRS
+ * @api {post} /api/getEvents Получить список событий из журнала FRS
  * @apiPrivate
  * @apiName getEvents
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -250,11 +291,11 @@
 
 
 /**
- * @api {post} /registerFace Зарегистрировать дескриптор
+ * @api {post} /api/registerFace Зарегистрировать дескриптор
  * @apiPrivate
  * @apiName registerFace
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -299,11 +340,11 @@
 
 
 /**
- * @api {post} /addFaces Добавить зарегистрированные дескрипторы к видео потоку
+ * @api {post} /api/addFaces Добавить зарегистрированные дескрипторы к видео потоку
  * @apiPrivate
  * @apiName addFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -323,11 +364,11 @@
 
 
 /**
- * @api {post} /removeFaces Убрать зарегистрированные дескрипторы из видео потока
+ * @api {post} /api/removeFaces Убрать зарегистрированные дескрипторы из видео потока
  * @apiPrivate
  * @apiName removeFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -349,11 +390,11 @@
 
 
 /**
- * @api {post} /deleteFaces Удалить дескрипторы из базы
+ * @api {post} /api/deleteFaces Удалить дескрипторы из базы
  * @apiPrivate
  * @apiName deleteFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -374,11 +415,11 @@
 
 
 /**
- * @api {post} /listAllFaces Получить все идентификаторы дескрипторов
+ * @api {post} /api/listAllFaces Получить все идентификаторы дескрипторов
  * @apiPrivate
  * @apiName listAllFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -395,11 +436,97 @@
 
 
 /**
- * @api {post} /addSpecialGroup Добавить специальную группу
+ * @api {post} /api/getSettings Получить параметры настройки
+ * @apiPrivate
+ * @apiName getSettings
+ * @apiGroup Host-->FRS
+ * @apiVersion 1.1.1
+ *
+ * @apiDescription **[в работе]**
+ *
+ * @apiParam {String[]} [params] массив с названием интересующих параметров настройки; если не указан, то возвращаются все параметры
+ *
+ * @apiSuccess {Object[]} - массив объектов
+ * @apiSuccess {String} -.paramName название параметра
+ * @apiSuccess {Any} -.paramValue значение параметра
+ * @apiSuccess {String="bool", "int", "double", "string"} -.paramType тип параметра
+ * @apiSuccess {String} [-.description] описание параметра
+ * @apiSuccess {Any} [-.minValue] минимальное значение параметра
+ * @apiSuccess {Any} [-.maxValue] максимальное значение параметра
+ *
+ * @apiParamExample {json} Пример использования
+ * {
+ *	 "params": ["flag-copy-event-data", "retry-pause", "face-confidence", "comments-non-normal-face-class"]
+ * }
+ *
+ * @apiSuccessExample {json} Пример результата выполнения
+ * [
+ *   {
+ *     "paramName": "flag-copy-event-data",
+ *     "paramValue": true,
+ *     "paramType": "bool"
+ *   },
+ *   {
+ *     "paramName": "retry-pause",
+ *     "paramValue": 30,
+ *     "paramType": "int",
+ *     "description": "Пауза в секундах между попытками установки связи с видео потоком"
+ *     "minValue": 3,
+ *     "maxValue": 36000,
+ *   },
+ *   {
+ *     "paramName": "face-confidence",
+ *     "paramValue": 0.75,
+ *     "paramType": "double",
+ *     "description": "Порог вероятности определения лица",
+ *     "minValue": 0.1,
+ *     "maxValue": 1.0
+ *   },
+ *   {
+ *     "paramName": "comments-non-normal-face-class",
+ *     "paramValue": "Лицо в маске или в темных очках.",
+ *     "paramType": "string"
+ *   }
+ * ]
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ */
+
+
+/**
+ * @api {post} /api/setSettings Установить параметры настройки
+ * @apiPrivate
+ * @apiName setSettings
+ * @apiGroup Host-->FRS
+ * @apiVersion 1.1.1
+ *
+ * @apiDescription **[в работе]**
+ *
+ * @apiParam {Object[]} params массив параметров настройки
+ * @apiParam {String} params.paramName название параметра
+ * @apiParam {Any} params.paramValue значение параметра, тип зависит от названия параметра
+ *
+ * @apiParamExample {json} Пример использования
+ * {
+ *   "params": [
+ *       {"paramName": "tolerance", "paramValue": 0.75},
+ *       {"paramName": "face-enlarge-scale", "paramValue": 1.4}
+ *   ]
+ * }
+ *
+ * @apiErrorExample {json} Ошибки
+ * 400 некорректный запрос
+ * 500 ошибка на сервере
+ */
+
+
+/**
+ * @api {post} /api/addSpecialGroup Добавить специальную группу
  * @apiPrivate
  * @apiName addSpecialGroup
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -429,11 +556,11 @@
 
 
 /**
- * @api {post} /updateSpecialGroup Обновить специальную группу
+ * @api {post} /api/updateSpecialGroup Обновить специальную группу
  * @apiPrivate
  * @apiName updateSpecialGroup
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -454,11 +581,11 @@
 
 
 /**
- * @api {post} /deleteSpecialGroup Удалить специальную группу
+ * @api {post} /api/deleteSpecialGroup Удалить специальную группу
  * @apiPrivate
  * @apiName deleteSpecialGroup
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -478,11 +605,11 @@
 
 
 /**
- * @api {post} /processFrame Обработать кадр по URL
+ * @api {post} /api/processFrame Обработать кадр по URL
  * @apiPrivate
  * @apiName processFrame
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -507,11 +634,11 @@
 
 
 /**
- * @api {post} /saveDnnStatsData Сохранить данные сбора статистики инференса
+ * @api {post} /api/saveDnnStatsData Сохранить данные сбора статистики инференса
  * @apiPrivate
  * @apiName saveDnnStatsData
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -527,10 +654,10 @@
 
 
 /**
- * @api {post} /sgRegisterFace Зарегистрировать дескриптор в специальной группе
+ * @api {post} /sgapi/sgRegisterFace Зарегистрировать дескриптор в специальной группе
  * @apiName sgRegisterFace
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -582,10 +709,10 @@
 
 
 /**
- * @api {post} /sgDeleteFaces Удалить дескрипторы из специальной группы
+ * @api {post} /sgapi/sgDeleteFaces Удалить дескрипторы из специальной группы
  * @apiName sgDeleteFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -608,10 +735,10 @@
 
 
 /**
- * @api {post} /sgListFaces Получить список дескрипторов специальной группы
+ * @api {post} /sgapi/sgListFaces Получить список дескрипторов специальной группы
  * @apiName sgListFaces
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -645,10 +772,10 @@
 
 
 /**
- * @api {post} /sgUpdateGroup Обновить параметры специальной группы
+ * @api {post} /sgapi/sgUpdateGroup Обновить параметры специальной группы
  * @apiName sgUpdateGroup
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -669,10 +796,10 @@
 
 
 /**
- * @api {post} /sgRenewToken Обновить токен авторизации специальной группы
+ * @api {post} /sgapi/sgRenewToken Обновить токен авторизации специальной группы
  * @apiName sgRenewToken
  * @apiGroup Host-->FRS
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -697,7 +824,7 @@
  * @apiPrivate
  * @apiName faceRecognized
  * @apiGroup FRS-->Host
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -716,7 +843,7 @@
  * @api {post} callback Событие распознавания лица в специальной группе
  * @apiName sgFaceRecognized
  * @apiGroup FRS-->Host
- * @apiVersion 1.0.0
+ * @apiVersion 1.1.1
  *
  * @apiDescription **[в работе]**
  *
@@ -794,6 +921,7 @@ namespace API
   //запросы
   inline constexpr absl::string_view ADD_STREAM = "addStream";  //добавить или изменить видео поток
   inline constexpr absl::string_view MOTION_DETECTION = "motionDetection";  //информация о детекции движения
+  inline constexpr absl::string_view DOOR_IS_OPEN = "doorIsOpen";  //уведомление об открытии двери домофона
   inline constexpr absl::string_view BEST_QUALITY = "bestQuality";  //получить информацию о кадре с "лучшим" лицом
   inline constexpr absl::string_view REGISTER_FACE = "registerFace";  //зарегистрировать лицо
   inline constexpr absl::string_view ADD_FACES = "addFaces";  //привязать дескрипторы к видео потоку
@@ -803,6 +931,8 @@ namespace API
   inline constexpr absl::string_view LIST_ALL_FACES = "listAllFaces";  //список всех дескрипторов
   inline constexpr absl::string_view DELETE_FACES = "deleteFaces";  //удалить список дескрипторов из базы (в независимости от привязок к видео потокам)
   inline constexpr absl::string_view GET_EVENTS = "getEvents";  //получить список событий из временного интервала
+  inline constexpr absl::string_view GET_SETTINGS = "getSettings";  //получить значения параметров
+  inline constexpr absl::string_view SET_SETTINGS = "setSettings";  //установить значения параметров
   inline constexpr absl::string_view ADD_SPECIAL_GROUP = "addSpecialGroup";  //добавить специальную группу
   inline constexpr absl::string_view UPDATE_SPECIAL_GROUP = "updateSpecialGroup";  //обновить специальную группу
   inline constexpr absl::string_view DELETE_SPECIAL_GROUP = "deleteSpecialGroup";  //удалить специальную группу
@@ -817,6 +947,7 @@ namespace API
   //логи для вызова методов
   inline constexpr absl::string_view LOG_CALL_ADD_STREAM = "API call $0: streamId = $1;  url = $2;  callback = $3";
   inline constexpr absl::string_view LOG_CALL_MOTION_DETECTION = "API call $0: streamId = $1;  isStart = $2";
+  inline constexpr absl::string_view LOG_CALL_DOOR_IS_OPEN = "API call $0: streamId = $1";
   inline constexpr absl::string_view LOG_CALL_BEST_QUALITY = "API call $0: eventId = $1;  streamId = $2;  date = $3;  uuid = $4";
   inline constexpr absl::string_view LOG_CALL_REGISTER_FACE =  "API call $0: streamId = $1;  url = $2;  face = [$3, $4, $5, $6]";
   inline constexpr absl::string_view LOG_CALL_ADD_OR_REMOVE_FACES = "API call $0: streamId = $1;  faceIds = [$2]";
@@ -865,6 +996,10 @@ namespace API
   constexpr const char* P_PARAMS = "params";
   constexpr const char* P_PARAM_NAME = "paramName";
   constexpr const char* P_PARAM_VALUE = "paramValue";
+  constexpr const char* P_PARAM_TYPE = "paramType";
+  constexpr const char* P_PARAM_COMMENTS = "description";
+  constexpr const char* P_PARAM_MIN_VALUE = "minValue";
+  constexpr const char* P_PARAM_MAX_VALUE = "maxValue";
   constexpr const char* P_QUALITY = "quality";
   constexpr const char* P_DATE_START = "dateStart";
   constexpr const char* P_DATE_END = "dateEnd";
@@ -890,7 +1025,7 @@ private:
   //api функции
   static bool addVStream(const String& vstream_ext, const String& url, const String& callback_url, const std::vector<int>& face_ids,
     const HashMap<String, String>& params);
-  static void motionDetection(const String& vstream_ext, bool is_start);
+  static void motionDetection(const String& vstream_ext, bool is_start, bool is_door_open = false);
   static bool addFaces(const String& vstream_ext, const std::vector<int>& face_ids);
   static bool removeFaces(const String& vstream_ext, const std::vector<int>& face_ids);
   static bool deleteFaces(const std::vector<int>& face_ids);
@@ -898,4 +1033,5 @@ private:
   static std::tuple<int, String> addSpecialGroup(const String& group_name, int max_descriptor_count);
   static bool updateSpecialGroup(int id_sgroup, const String& group_name, int max_descriptor_count);
   static bool sgDeleteFaces(int id_sgroup, const std::vector<int>& face_ids);
+  static bool setParams(const HashMap<String, String>& params);
 };

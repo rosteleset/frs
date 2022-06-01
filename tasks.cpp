@@ -2,8 +2,7 @@
 #include "cpr/cpr.h"
 #include "http_client.h"
 
-namespace ni = nvidia::inferenceserver;
-namespace nic = nvidia::inferenceserver::client;
+namespace tc = triton::client;
 
 using namespace std;
 
@@ -206,8 +205,8 @@ namespace
       face_confidence_threshold = singleton.getConfigParamValue<double>(CONF_FACE_CONFIDENCE_THRESHOLD, id_vstream);
     }
 
-    unique_ptr<nic::InferenceServerHttpClient> triton_client;
-    auto err = nic::InferenceServerHttpClient::Create(&triton_client, server_url, false);
+    unique_ptr<tc::InferenceServerHttpClient> triton_client;
+    auto err = tc::InferenceServerHttpClient::Create(&triton_client, server_url, false);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать клиента для инференса: $0", err.Message()));
@@ -238,98 +237,98 @@ namespace
     vector<uint8_t> input_data(input_size * sizeof(float));
     memcpy(input_data.data(), input_buffer.data(), input_data.size());
     std::vector<int64_t> shape = {1, channels, input_height, input_width};
-    nic::InferInput* input;
-    err = nic::InferInput::Create(&input, input_tensor_name, shape, "FP32");
+    tc::InferInput* input;
+    err = tc::InferInput::Create(&input, input_tensor_name, shape, "FP32");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать входные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferInput> input_ptr(input);
+    std::shared_ptr<tc::InferInput> input_ptr(input);
 
-    nic::InferRequestedOutput* output497;
-    err = nic::InferRequestedOutput::Create(&output497, "497");
+    tc::InferRequestedOutput* output497;
+    err = tc::InferRequestedOutput::Create(&output497, "497");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output497_ptr(output497);
+    std::shared_ptr<tc::InferRequestedOutput> output497_ptr(output497);
 
-    nic::InferRequestedOutput* output494;
-    err = nic::InferRequestedOutput::Create(&output494, "494");
+    tc::InferRequestedOutput* output494;
+    err = tc::InferRequestedOutput::Create(&output494, "494");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output494_ptr(output494);
+    std::shared_ptr<tc::InferRequestedOutput> output494_ptr(output494);
 
-    nic::InferRequestedOutput* output477;
-    err = nic::InferRequestedOutput::Create(&output477, "477");
+    tc::InferRequestedOutput* output477;
+    err = tc::InferRequestedOutput::Create(&output477, "477");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output477_ptr(output477);
+    std::shared_ptr<tc::InferRequestedOutput> output477_ptr(output477);
 
-    nic::InferRequestedOutput* output454;
-    err = nic::InferRequestedOutput::Create(&output454, "454");
+    tc::InferRequestedOutput* output454;
+    err = tc::InferRequestedOutput::Create(&output454, "454");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output454_ptr(output454);
+    std::shared_ptr<tc::InferRequestedOutput> output454_ptr(output454);
 
-    nic::InferRequestedOutput* output451;
-    err = nic::InferRequestedOutput::Create(&output451, "451");
+    tc::InferRequestedOutput* output451;
+    err = tc::InferRequestedOutput::Create(&output451, "451");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output451_ptr(output451);
+    std::shared_ptr<tc::InferRequestedOutput> output451_ptr(output451);
 
-    nic::InferRequestedOutput* output474;
-    err = nic::InferRequestedOutput::Create(&output474, "474");
+    tc::InferRequestedOutput* output474;
+    err = tc::InferRequestedOutput::Create(&output474, "474");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output474_ptr(output474);
+    std::shared_ptr<tc::InferRequestedOutput> output474_ptr(output474);
 
-    nic::InferRequestedOutput* output448;
-    err = nic::InferRequestedOutput::Create(&output448, "448");
+    tc::InferRequestedOutput* output448;
+    err = tc::InferRequestedOutput::Create(&output448, "448");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output448_ptr(output448);
+    std::shared_ptr<tc::InferRequestedOutput> output448_ptr(output448);
 
-    nic::InferRequestedOutput* output500;
-    err = nic::InferRequestedOutput::Create(&output500, "500");
+    tc::InferRequestedOutput* output500;
+    err = tc::InferRequestedOutput::Create(&output500, "500");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output500_ptr(output500);
+    std::shared_ptr<tc::InferRequestedOutput> output500_ptr(output500);
 
-    nic::InferRequestedOutput* output471;
-    err = nic::InferRequestedOutput::Create(&output471, "471");
+    tc::InferRequestedOutput* output471;
+    err = tc::InferRequestedOutput::Create(&output471, "471");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output471_ptr(output471);
+    std::shared_ptr<tc::InferRequestedOutput> output471_ptr(output471);
 
-    std::vector<nic::InferInput*> inputs = {input_ptr.get()};
-    std::vector<const nic::InferRequestedOutput*> outputs = {
+    std::vector<tc::InferInput*> inputs = {input_ptr.get()};
+    std::vector<const tc::InferRequestedOutput*> outputs = {
       output497_ptr.get(), output494_ptr.get(), output477_ptr.get(), output454_ptr.get(), output451_ptr.get()
       , output474_ptr.get(), output448_ptr.get(), output500_ptr.get(), output471_ptr.get()
     };
@@ -340,9 +339,9 @@ namespace
       return false;
     }
 
-    nic::InferOptions options(model_name);
+    tc::InferOptions options(model_name);
     options.model_version_ = "";
-    nic::InferResult* result;
+    tc::InferResult* result;
 
     //для теста
     //tt1 = std::chrono::steady_clock::now();
@@ -360,7 +359,7 @@ namespace
       singleton.addLog(absl::Substitute("Ошибка! Не удалось отправить синхронный запрос инференса: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferResult> result_ptr(result);
+    std::shared_ptr<tc::InferResult> result_ptr(result);
 
     if (!result_ptr->RequestStatus().IsOk())
     {
@@ -498,8 +497,8 @@ namespace
       class_count = singleton.getConfigParamValue<int>(CONF_DNN_FC_OUTPUT_SIZE);
     }
 
-    unique_ptr<nic::InferenceServerHttpClient> triton_client;
-    auto err = nic::InferenceServerHttpClient::Create(&triton_client, server_url, false);
+    unique_ptr<tc::InferenceServerHttpClient> triton_client;
+    auto err = tc::InferenceServerHttpClient::Create(&triton_client, server_url, false);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать клиента для инференса: $0", err.Message()));
@@ -538,25 +537,25 @@ namespace
     vector<uint8_t> input_data(input_size * sizeof(float));
     memcpy(input_data.data(), input_buffer.data(), input_data.size());
     std::vector<int64_t> shape = {1, channels, input_height, input_width};
-    nic::InferInput* input;
-    err = nic::InferInput::Create(&input, input_tensor_name, shape, "FP32");
+    tc::InferInput* input;
+    err = tc::InferInput::Create(&input, input_tensor_name, shape, "FP32");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать входные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferInput> input_ptr(input);
+    std::shared_ptr<tc::InferInput> input_ptr(input);
 
-    nic::InferRequestedOutput* output;
-    err = nic::InferRequestedOutput::Create(&output, output_tensor_name);
+    tc::InferRequestedOutput* output;
+    err = tc::InferRequestedOutput::Create(&output, output_tensor_name);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output_ptr(output);
-    std::vector<nic::InferInput*> inputs = {input_ptr.get()};
-    std::vector<const nic::InferRequestedOutput*> outputs = {output_ptr.get()};
+    std::shared_ptr<tc::InferRequestedOutput> output_ptr(output);
+    std::vector<tc::InferInput*> inputs = {input_ptr.get()};
+    std::vector<const tc::InferRequestedOutput*> outputs = {output_ptr.get()};
     err = input_ptr->AppendRaw(input_data);
     if (!err.IsOk())
     {
@@ -564,9 +563,9 @@ namespace
       return false;
     }
 
-    nic::InferOptions options(model_name);
+    tc::InferOptions options(model_name);
     options.model_version_ = "";
-    nic::InferResult* result;
+    tc::InferResult* result;
 
     //для теста
     //auto tt0 = std::chrono::steady_clock::now();
@@ -582,7 +581,7 @@ namespace
       singleton.addLog(absl::Substitute("Ошибка! Не удалось отправить синхронный запрос инференса: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferResult> result_ptr(result);
+    std::shared_ptr<tc::InferResult> result_ptr(result);
 
     if (!result_ptr->RequestStatus().IsOk())
     {
@@ -644,8 +643,8 @@ namespace
       output_tensor_name = singleton.getConfigParamValue<String>(CONF_DNN_FR_OUTPUT_TENSOR_NAME);
     }
 
-    unique_ptr<nic::InferenceServerHttpClient> triton_client;
-    auto err = nic::InferenceServerHttpClient::Create(&triton_client, server_url, false);
+    unique_ptr<tc::InferenceServerHttpClient> triton_client;
+    auto err = tc::InferenceServerHttpClient::Create(&triton_client, server_url, false);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать клиента для инференса: $0", err.Message()));
@@ -665,25 +664,25 @@ namespace
     vector<uint8_t> input_data(input_size * sizeof(float));
     memcpy(input_data.data(), input_buffer.data(), input_data.size());
     std::vector<int64_t> shape = {1, channels, input_height, input_width};
-    nic::InferInput* input;
-    err = nic::InferInput::Create(&input, input_tensor_name, shape, "FP32");
+    tc::InferInput* input;
+    err = tc::InferInput::Create(&input, input_tensor_name, shape, "FP32");
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать входные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferInput> input_ptr(input);
+    std::shared_ptr<tc::InferInput> input_ptr(input);
 
-    nic::InferRequestedOutput* output;
-    err = nic::InferRequestedOutput::Create(&output, output_tensor_name);
+    tc::InferRequestedOutput* output;
+    err = tc::InferRequestedOutput::Create(&output, output_tensor_name);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось создать выходные данные: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferRequestedOutput> output_ptr(output);
-    std::vector<nic::InferInput*> inputs = {input_ptr.get()};
-    std::vector<const nic::InferRequestedOutput*> outputs = {output_ptr.get()};
+    std::shared_ptr<tc::InferRequestedOutput> output_ptr(output);
+    std::vector<tc::InferInput*> inputs = {input_ptr.get()};
+    std::vector<const tc::InferRequestedOutput*> outputs = {output_ptr.get()};
     err = input_ptr->AppendRaw(input_data);
     if (!err.IsOk())
     {
@@ -691,16 +690,16 @@ namespace
       return false;
     }
 
-    nic::InferOptions options(model_name);
+    tc::InferOptions options(model_name);
     options.model_version_ = "";
-    nic::InferResult* result;
+    tc::InferResult* result;
     err = triton_client->Infer(&result, options, inputs, outputs);
     if (!err.IsOk())
     {
       singleton.addLog(absl::Substitute("Ошибка! Не удалось отправить синхронный запрос инференса: $0", err.Message()));
       return false;
     }
-    std::shared_ptr<nic::InferResult> result_ptr(result);
+    std::shared_ptr<tc::InferResult> result_ptr(result);
 
     if (!result_ptr->RequestStatus().IsOk())
     {
@@ -834,6 +833,63 @@ namespace
       ofstream f_json(singleton.screenshot_path / (path_part + ".json"));
       f_json << json_data.dump();
     }
+  }
+}
+
+concurrencpp::result<void> checkMotion(TaskData task_data)
+{
+  auto& singleton = Singleton::instance();
+  try
+  {
+    if (task_data.delay_s > 0)
+    {
+      co_await singleton.runtime->timer_queue()->make_delay_object(
+        std::chrono::milliseconds(static_cast<int>(1000 * task_data.delay_s)),
+        Singleton::instance().runtime->thread_pool_executor());
+    }
+
+    if (!singleton.is_working.load(std::memory_order_relaxed))
+      co_return;
+
+    bool do_task = false;
+
+    //scope for lock mutex
+    {
+      scoped_lock lock(singleton.mtx_capture);
+      singleton.is_door_open.erase(task_data.id_vstream);
+      auto tp_start_motion = singleton.id_vstream_to_start_motion.contains(task_data.id_vstream)
+        ? singleton.id_vstream_to_start_motion.at(task_data.id_vstream) : time_point{};
+      auto tp_end_motion = singleton.id_vstream_to_end_motion.contains(task_data.id_vstream)
+        ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream) : time_point{};
+      if (tp_start_motion > tp_end_motion)
+      {
+        do_task = true;
+        singleton.is_capturing.insert(task_data.id_vstream);
+      } else
+        singleton.is_capturing.erase(task_data.id_vstream);
+    }
+
+    if (do_task)
+    {
+      task_data.task_type = TASK_RECOGNIZE;
+      task_data.delay_s = 0.0;
+      singleton.runtime->thread_pool_executor()->submit(processFrame, task_data, nullptr, nullptr);
+      singleton.addLog(absl::Substitute(API::LOG_START_MOTION, task_data.id_vstream));
+    }
+
+  } catch (const concurrencpp::errors::broken_task& e)
+  {
+    //ничего не делаем
+  } catch (const concurrencpp::errors::runtime_shutdown& e)
+  {
+    //ничего не делаем
+  } catch (const std::exception& e)
+  {
+    singleton.addLog(e.what());
+    scoped_lock lock(singleton.mtx_capture);
+
+    //убираем открытие двери
+    singleton.is_door_open.erase(task_data.id_vstream);
   }
 }
 
@@ -1116,14 +1172,9 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             continue;
           }
 
-          face_data.back().is_frontal = true;
-
           //"выравниваем" лицо
           cv::Mat aligned_face = alignFaceAffineTransform(frame, landmarks5, singleton.face_width,
             singleton.face_height);
-
-          if (task_data.task_type == TASK_TEST)
-            cv::imwrite(singleton.working_path + "/aligned_face.jpg", aligned_face);
 
           if (aligned_face.cols != singleton.face_width || aligned_face.rows != singleton.face_height)
           {
@@ -1132,6 +1183,11 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
 
             continue;
           }
+
+          if (task_data.task_type == TASK_TEST)
+            cv::imwrite(singleton.working_path + "/aligned_face.jpg", aligned_face);
+
+          face_data.back().is_frontal = true;
 
           //проверяем на размытость
           double laplacian = varianceOfLaplacian(aligned_face);
@@ -1482,70 +1538,72 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
 
         if (task_data.task_type == TASK_REGISTER_DESCRIPTOR)
         {
-          if (best_register_index < 0)
+          if (best_register_index >= 0)
           {
-            response->comments = conf_comments_no_faces;
+            //все ок, регистрируем дескриптор
+            cv::Rect r = enlargeFaceRect(face_data[best_register_index].face_rect, conf_face_enlarge_scale);
+            r = r & cv::Rect(0, 0, frame.cols, frame.rows);
+            if (face_data[best_register_index].cosine_distance > 0.999)
+              response->id_descriptor = face_data[best_register_index].id_descriptor;
+            else
+            {
+              //переключаемся в фоновый режим
+              if (!singleton.is_working.load(std::memory_order_relaxed))
+                co_return;
+              co_await concurrencpp::resume_on(singleton.runtime->background_executor());
+
+              if (task_data.id_vstream > 0)
+                response->id_descriptor = singleton.addFaceDescriptor(task_data.id_vstream,
+                  face_data[best_register_index].fd, frame(r));
+              else
+                if (task_data.id_sgroup > 0)
+                  response->id_descriptor = singleton.addSGroupFaceDescriptor(task_data.id_sgroup,
+                    face_data[best_register_index].fd, frame(r));
+
+              //переключаемся в основной режим
+              if (!singleton.is_working.load(std::memory_order_relaxed))
+                co_return;
+              co_await concurrencpp::resume_on(singleton.runtime->thread_pool_executor());
+            }
+
+            if (response->id_descriptor > 0)
+            {
+              if (face_data[best_register_index].id_descriptor != response->id_descriptor)
+              {
+                response->comments = conf_comments_new_descriptor;
+                singleton.addLog(absl::Substitute("Создан дескриптор id = $0.", response->id_descriptor));
+              } else
+              {
+                response->comments = conf_comments_descriptor_exists;
+                singleton.addLog(absl::Substitute("Дескриптор уже существует id = $0.", response->id_descriptor));
+              }
+              response->face_image = frame(r).clone();
+              response->face_left = face_data[best_register_index].face_rect.x;
+              response->face_top = face_data[best_register_index].face_rect.y;
+              response->face_width = face_data[best_register_index].face_rect.width;
+              response->face_height = face_data[best_register_index].face_rect.height;
+            } else
+              response->comments = conf_comments_descriptor_creation_error;
           } else
           {
-            if (!face_data[best_register_index].is_work_area)
-              response->comments = conf_comments_partial_face;
-            else
-              if (!face_data[best_register_index].is_frontal)
-                response->comments = conf_comments_non_frontal_face;
+            if (!face_data.empty())
+            {
+              auto check_index = 0;
+              if (!face_data[check_index].is_work_area)
+                response->comments = conf_comments_partial_face;
               else
-                if (!face_data[best_register_index].is_non_blurry)
-                  response->comments = conf_comments_blurry_face;
+                if (!face_data[check_index].is_frontal)
+                  response->comments = conf_comments_non_frontal_face;
                 else
-                  if (face_data[best_register_index].face_class_index != FaceClassIndexes::FACE_NORMAL)
-                    response->comments = conf_comments_non_normal_face_class;
+                  if (!face_data[check_index].is_non_blurry)
+                    response->comments = conf_comments_blurry_face;
                   else
-                  {
-                    //все ок, регистрируем дескриптор
-                    cv::Rect r = enlargeFaceRect(face_data[best_register_index].face_rect, conf_face_enlarge_scale);
-                    r = r & cv::Rect(0, 0, frame.cols, frame.rows);
-                    if (face_data[best_register_index].cosine_distance > 0.999)
-                      response->id_descriptor = face_data[best_register_index].id_descriptor;
+                    if (face_data[check_index].face_class_index != FaceClassIndexes::FACE_NORMAL)
+                      response->comments = conf_comments_non_normal_face_class;
                     else
-                    {
-                      //переключаемся в фоновый режим
-                      if (!singleton.is_working.load(std::memory_order_relaxed))
-                        co_return;
-                      co_await concurrencpp::resume_on(singleton.runtime->background_executor());
-
-                      if (task_data.id_vstream > 0)
-                        response->id_descriptor = singleton.addFaceDescriptor(task_data.id_vstream,
-                          face_data[best_register_index].fd, frame(r));
-                      else
-                        if (task_data.id_sgroup > 0)
-                          response->id_descriptor = singleton.addSGroupFaceDescriptor(task_data.id_sgroup,
-                            face_data[best_register_index].fd, frame(r));
-
-                      //переключаемся в основной режим
-                      if (!singleton.is_working.load(std::memory_order_relaxed))
-                        co_return;
-                      co_await concurrencpp::resume_on(singleton.runtime->thread_pool_executor());
-                    }
-
-                    if (response->id_descriptor > 0)
-                    {
-                      if (face_data[best_register_index].id_descriptor != response->id_descriptor)
-                      {
-                        response->comments = conf_comments_new_descriptor;
-                        singleton.addLog(absl::Substitute("Создан дескриптор id = $0.", response->id_descriptor));
-                      } else
-                      {
-                        response->comments = conf_comments_descriptor_exists;
-                        singleton.addLog(
-                          absl::Substitute("Дескриптор уже существует id = $0.", response->id_descriptor));
-                      }
-                      response->face_image = frame(r).clone();
-                      response->face_left = face_data[best_register_index].face_rect.x;
-                      response->face_top = face_data[best_register_index].face_rect.y;
-                      response->face_width = face_data[best_register_index].face_rect.width;
-                      response->face_height = face_data[best_register_index].face_rect.height;
-                    } else
-                      response->comments = conf_comments_descriptor_creation_error;
-                  }
+                      response->comments = conf_comments_inference_error;
+            } else
+              response->comments = conf_comments_no_faces;
           }
         }
 
@@ -1605,10 +1663,10 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream) : time_point{};
         if (tp_start_motion <= tp_end_motion
           && tp_end_motion + std::chrono::milliseconds(static_cast<int>(1000 * conf_process_frames_interval)) <
-          std::chrono::steady_clock::now())
+          std::chrono::steady_clock::now() || singleton.is_door_open.contains(task_data.id_vstream))
         {
-          //прекращаем захватывать кадры
-          singleton.is_capturing.erase(task_data.id_vstream);
+          if (!singleton.is_door_open.contains(task_data.id_vstream))
+            singleton.is_capturing.erase(task_data.id_vstream);  //прекращаем захватывать кадры
         } else
           do_capture = true;
       }

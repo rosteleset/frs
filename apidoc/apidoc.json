@@ -1,6 +1,6 @@
 {
   "name": "Face Recognition System",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "title": "Face Recognition System",
   "sampleUrl": null,
   "order": [
@@ -9,6 +9,7 @@
     "listStreams",
     "removeStream",
     "motionDetection",
+    "doorIsOpen",
     "bestQuality",
     "getEvents",
     "registerFace",
@@ -16,6 +17,8 @@
     "removeFaces",
     "deleteFaces",
     "listAllFaces",
+    "getSettings",
+    "setSettings",
     "addSpecialGroup",
     "updateSpecialGroup",
     "deleteSpecialGroup",

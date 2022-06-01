@@ -80,6 +80,17 @@ ApiService::~ApiService()
 
 bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param)
 {
+  if (json.error())
+  {
+    crow::json::wvalue json_error;
+    int code = API::CODE_ERROR;
+    json_error[API::P_CODE] = code;
+    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
+    response.code = code;
+    response.body = json_error.dump();
+    return false;
+  }
   if (!json.has(input_param))
   {
     crow::json::wvalue json_error;
@@ -263,6 +274,20 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     singleton.addLog(absl::Substitute(API::LOG_CALL_MOTION_DETECTION, API::MOTION_DETECTION, vstream_ext, is_start));
 
     motionDetection(vstream_ext, is_start);
+    response.code = API::CODE_NO_CONTENT;
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::DOOR_IS_OPEN))
+  {
+    if (!checkInputParam(json, response, API::P_STREAM_ID))
+      return;
+
+    String vstream_ext = jsonString(json, API::P_STREAM_ID);
+    singleton.addLog(absl::Substitute(API::LOG_CALL_DOOR_IS_OPEN, API::DOOR_IS_OPEN, vstream_ext));
+
+    motionDetection(vstream_ext, false, true);
     response.code = API::CODE_NO_CONTENT;
 
     return;
@@ -805,6 +830,194 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       response.code = code;
       response.body = json_response.dump();
     }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::GET_SETTINGS))
+  {
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SIMPLE_METHOD, API::GET_SETTINGS));
+
+    std::vector<String> params;
+    if (!request.body.empty())
+    {
+      if (json.has(API::P_PARAMS) && json[API::P_PARAMS].t() != crow::json::type::Null && json[API::P_PARAMS].t() != crow::json::type::List)
+      {
+        crow::json::wvalue json_error;
+        int code = API::CODE_ERROR;
+        json_error[API::P_CODE] = code;
+        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
+        response.code = code;
+        response.body = json_error.dump();
+        return;
+      }
+      auto params_list = json.has(API::P_PARAMS) ? json[API::P_PARAMS] : crow::json::rvalue(crow::json::type::List);
+      if (params_list.t() == crow::json::type::List)
+        for (const auto& json_value : params_list)
+          if (json_value.t() == crow::json::type::String)
+            params.push_back(json_value.s());
+    }
+
+    crow::json::wvalue::list json_data;
+
+    //scope for lock mutex
+    {
+      ReadLocker lock(singleton.mtx_task_config);
+
+      if (params.empty())
+      {
+        for (const auto& conf_param : singleton.task_config.conf_params)
+        {
+          crow::json::wvalue json_item;
+          json_item[API::P_PARAM_NAME] = conf_param.first;
+          if (!conf_param.second.comments.empty())
+            json_item[API::P_PARAM_COMMENTS] = conf_param.second.comments;
+          if (std::holds_alternative<bool>(conf_param.second.value))
+          {
+            json_item[API::P_PARAM_TYPE] = TYPE_BOOL;
+            json_item[API::P_PARAM_VALUE] = std::get<bool>(conf_param.second.value);
+          }
+          if (std::holds_alternative<int>(conf_param.second.value))
+          {
+            json_item[API::P_PARAM_TYPE] = TYPE_INT;
+            json_item[API::P_PARAM_VALUE] = std::get<int>(conf_param.second.value);
+            if (conf_param.second.min_value.index() != 0)
+              json_item[API::P_PARAM_MIN_VALUE] = std::get<int>(conf_param.second.min_value);
+            if (conf_param.second.max_value.index() != 0)
+              json_item[API::P_PARAM_MAX_VALUE] = std::get<int>(conf_param.second.max_value);
+          }
+          if (std::holds_alternative<double>(conf_param.second.value))
+          {
+            json_item[API::P_PARAM_TYPE] = TYPE_DOUBLE;
+            json_item[API::P_PARAM_VALUE] = std::get<double>(conf_param.second.value);
+            if (conf_param.second.min_value.index() != 0)
+              json_item[API::P_PARAM_MIN_VALUE] = std::get<double>(conf_param.second.min_value);
+            if (conf_param.second.max_value.index() != 0)
+              json_item[API::P_PARAM_MAX_VALUE] = std::get<double>(conf_param.second.max_value);
+          }
+          if (std::holds_alternative<String>(conf_param.second.value))
+          {
+            json_item[API::P_PARAM_TYPE] = TYPE_STRING;
+            json_item[API::P_PARAM_VALUE] = std::get<String>(conf_param.second.value);
+          }
+
+          json_data.push_back(std::move(json_item));
+        }
+      } else
+      {
+        for (const auto& param : params)
+          if (singleton.task_config.conf_params.contains(param))
+          {
+            crow::json::wvalue json_item;
+            json_item[API::P_PARAM_NAME] = param;
+            if (!singleton.task_config.conf_params[param].comments.empty())
+              json_item[API::P_PARAM_COMMENTS] = singleton.task_config.conf_params[param].comments;
+            if (std::holds_alternative<bool>(singleton.task_config.conf_params[param].value))
+            {
+              json_item[API::P_PARAM_TYPE] = TYPE_BOOL;
+              json_item[API::P_PARAM_VALUE] = std::get<bool>(singleton.task_config.conf_params[param].value);
+            }
+            if (std::holds_alternative<int>(singleton.task_config.conf_params[param].value))
+            {
+              json_item[API::P_PARAM_TYPE] = TYPE_INT;
+              json_item[API::P_PARAM_VALUE] = std::get<int>(singleton.task_config.conf_params[param].value);
+              if (singleton.task_config.conf_params[param].min_value.index() != 0)
+                json_item[API::P_PARAM_MIN_VALUE] = std::get<int>(singleton.task_config.conf_params[param].min_value);
+              if (singleton.task_config.conf_params[param].max_value.index() != 0)
+                json_item[API::P_PARAM_MAX_VALUE] = std::get<int>(singleton.task_config.conf_params[param].max_value);
+            }
+            if (std::holds_alternative<double>(singleton.task_config.conf_params[param].value))
+            {
+              json_item[API::P_PARAM_TYPE] = TYPE_DOUBLE;
+              json_item[API::P_PARAM_VALUE] = std::get<double>(singleton.task_config.conf_params[param].value);
+              if (singleton.task_config.conf_params[param].min_value.index() != 0)
+                json_item[API::P_PARAM_MIN_VALUE] = std::get<double>(singleton.task_config.conf_params[param].min_value);
+              if (singleton.task_config.conf_params[param].max_value.index() != 0)
+                json_item[API::P_PARAM_MAX_VALUE] = std::get<double>(singleton.task_config.conf_params[param].max_value);
+            }
+            if (std::holds_alternative<String>(singleton.task_config.conf_params[param].value))
+            {
+              json_item[API::P_PARAM_TYPE] = TYPE_STRING;
+              json_item[API::P_PARAM_VALUE] = std::get<String>(singleton.task_config.conf_params[param].value);
+            }
+
+            json_data.push_back(std::move(json_item));
+          }
+      }
+    }
+
+    if (!json_data.empty())
+    {
+      int code = API::CODE_SUCCESS;
+      crow::json::wvalue json_response{
+        {API::P_CODE, code},
+        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, API::MSG_DONE},
+        {API::P_DATA, json_data}
+      };
+      response.code = code;
+      response.body = json_response.dump();
+    }
+
+    return;
+  }
+
+  if (api_function == absl::AsciiStrToLower(API::SET_SETTINGS))
+  {
+    if (!checkInputParam(json, response, API::P_PARAMS))
+      return;
+
+    singleton.addLog(absl::Substitute(API::LOG_CALL_SIMPLE_METHOD, API::SET_SETTINGS));
+
+    HashMap<String, String> params;
+    if (json[API::P_PARAMS].t() != crow::json::type::List)
+    {
+      crow::json::wvalue json_error;
+      int code = API::CODE_ERROR;
+      json_error[API::P_CODE] = code;
+      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
+      response.code = code;
+      response.body = json_error.dump();
+      return;
+    }
+
+    auto params_list = json[API::P_PARAMS];
+    bool is_ok2 = true;
+    for (const auto& json_value : params_list)
+      if (json_value.t() == crow::json::type::Object)
+      {
+        auto param_name = jsonString(json_value, API::P_PARAM_NAME);
+        auto param_value = jsonString(json_value, API::P_PARAM_VALUE);
+        if (!param_name.empty())
+          params[param_name] = param_value;
+        else
+        {
+          is_ok2 = false;
+          break;
+        }
+      } else
+      {
+        is_ok2 = false;
+        break;
+      }
+
+    if (!is_ok2)
+    {
+      crow::json::wvalue json_error;
+      int code = API::CODE_ERROR;
+      json_error[API::P_CODE] = code;
+      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
+      response.code = code;
+      response.body = json_error.dump();
+      return;
+    }
+
+    is_ok2 = setParams(params);
+    int code = is_ok2 ? API::CODE_SUCCESS : API::CODE_SERVER_ERROR;
+    simpleResponse(code, response);
 
     return;
   }
@@ -1426,39 +1639,58 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
   return true;
 }
 
-void ApiService::motionDetection(const String& vstream_ext, bool is_start)
+void ApiService::motionDetection(const String& vstream_ext, bool is_start, bool is_door_open)
 {
+  if (is_door_open)
+    is_start = false;
   Singleton& singleton = Singleton::instance();
   if (!singleton.is_working.load(std::memory_order_relaxed))
       return;
 
   int id_vstream = 0;
+  double conf_open_door_duration = 0.0;
 
   //scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
     if (it != singleton.task_config.conf_vstream_ext_to_id_vstream.end())
+    {
       id_vstream = it->second;
+      conf_open_door_duration = singleton.getConfigParamValue<double>(CONF_OPEN_DOOR_DURATION, id_vstream);
+    }
   }
 
   if (id_vstream == 0)
     return;
 
   bool do_task = false;
+  bool do_check_motion_task = false;
   auto now = std::chrono::steady_clock::now();
 
   //scope for lock mutex
   {
     scoped_lock lock(singleton.mtx_capture);
-    if (is_start)
-      singleton.id_vstream_to_start_motion[id_vstream] = now;
-    else
-      singleton.id_vstream_to_end_motion[id_vstream] = now;
-    if (is_start && !singleton.is_capturing.contains(id_vstream))
+
+    if (is_door_open)
     {
-      do_task = true;
-      singleton.is_capturing.insert(id_vstream);
+      if (!singleton.is_door_open.contains(id_vstream))
+      {
+        do_check_motion_task = true;
+        singleton.is_door_open.insert(id_vstream);
+        singleton.is_capturing.insert(id_vstream);
+      }
+    } else
+    {
+      if (is_start)
+        singleton.id_vstream_to_start_motion[id_vstream] = now;
+      else
+        singleton.id_vstream_to_end_motion[id_vstream] = now;
+      if (is_start && !singleton.is_capturing.contains(id_vstream))
+      {
+        do_task = true;
+        singleton.is_capturing.insert(id_vstream);
+      }
     }
   }
 
@@ -1469,6 +1701,12 @@ void ApiService::motionDetection(const String& vstream_ext, bool is_start)
     singleton.addLog(absl::Substitute(API::LOG_START_MOTION, task_data.id_vstream));
   }
 
+  if (do_check_motion_task && singleton.is_working.load(std::memory_order_relaxed))
+  {
+    auto task_data = TaskData(id_vstream, TASK_CHECK_MOTION);
+    task_data.delay_s = conf_open_door_duration;
+    singleton.runtime->thread_pool_executor()->submit(checkMotion, task_data);
+  }
 }
 
 bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& face_ids)
@@ -2227,6 +2465,103 @@ bool ApiService::sgDeleteFaces(int id_sgroup, const std::vector<int>& face_ids)
         //удаляем дескриптор
         singleton.id_descriptor_to_data.erase(id_descriptor);
       }
+  }
+
+  return true;
+}
+
+bool ApiService::setParams(const HashMap<String, String>& params)
+{
+  Singleton& singleton = Singleton::instance();
+  if (!singleton.is_working.load(std::memory_order_relaxed))
+    return false;
+
+  HashMap<String, ConfParam> conf_params;
+  std::vector<String> updated_params;
+
+  //scope for lock mutex
+  {
+    ReadLocker lock(singleton.mtx_task_config);
+    conf_params = singleton.task_config.conf_params;
+  }
+
+  for (const auto& param : params)
+  {
+    absl::string_view param_name = param.first;
+    absl::string_view param_value = param.second;
+
+    if (conf_params.contains(param_name))
+    {
+      bool is_ok = false;
+      Variant v{};
+      if (std::holds_alternative<bool>(conf_params[param_name].value))
+      {
+        int q;
+        is_ok = absl::SimpleAtoi(param_value, &q);
+        if (is_ok)
+          v = static_cast<bool>(q);
+      }
+      if (std::holds_alternative<int>(conf_params[param_name].value))
+      {
+        int q;
+        is_ok = absl::SimpleAtoi(param_value, &q);
+        if (is_ok)
+          v = q;
+      }
+      if (std::holds_alternative<double>(conf_params[param_name].value))
+      {
+        double q;
+        is_ok = absl::SimpleAtod(param_value, &q);
+        if (is_ok)
+          v = q;
+      }
+      if (std::holds_alternative<String>(conf_params[param_name].value))
+      {
+        is_ok = true;
+        v = param.second;
+      }
+
+      if (is_ok)
+      {
+        conf_params[param_name].value = v;
+        updated_params.push_back(param.first);
+      }
+    }
+  }
+
+  if (!updated_params.empty())
+  {
+    auto mysql_session = singleton.sql_client->getSession();
+    try
+    {
+      mysql_session.startTransaction();
+      auto statement = mysql_session.sql(SQL_SET_COMMON_PARAM);
+      for (const auto& param : updated_params)
+      {
+        statement
+          .bind(Singleton::variantToString(conf_params[param].value))
+          .bind(param)
+          .execute();
+      }
+      mysql_session.commit();
+    } catch (const mysqlx::Error& err)
+    {
+      mysql_session.rollback();
+      singleton.addLog(err.what());
+      return false;
+    }
+  }
+
+  //scope for lock mutex
+  {
+    WriteLocker lock(singleton.mtx_task_config);
+
+    singleton.task_config.conf_params = conf_params;
+    for (const auto& param : updated_params)
+      if (singleton.task_config.vstream_conf_params[0].contains(param))
+        singleton.task_config.vstream_conf_params[0][param].value = conf_params[param].value;
+
+    singleton.tp_task_config = std::chrono::steady_clock::now();
   }
 
   return true;

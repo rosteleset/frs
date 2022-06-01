@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(frs)
 set(TARGET_NAME "${PROJECT_NAME}")
 set(CMAKE_CXX_STANDARD 20)
-set(TRITON_CLIENT_DIR "$ENV{HOME}/triton_client/build/install" CACHE STRING "Директория Triton Client")
+set(TRITON_CLIENT_DIR "$ENV{HOME}/triton-client/build/install" CACHE STRING "Директория Triton Client")
 
 find_package(OpenCV REQUIRED)
 

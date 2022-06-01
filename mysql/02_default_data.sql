@@ -48,6 +48,7 @@ INSERT INTO common_settings (param_name, param_value, param_comments, for_vstrea
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('logs-level', '1', 'уровень логов: 0 - ошибки; 1 - события; 2 - подробно', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('margin', '5', 'Отступ в процентах от краев кадра для уменьшения рабочей области', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('max-capture-error-count', '3', 'Максимальное количество подряд полученных ошибок при получении кадра с камеры, после которого будет считаться попытка получения кадра неудачной', 1);
+INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('open-door-duration', '5.0', 'Время открытия двери в секундах', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('pitch-threshold', '30', 'Пороговое значение тангажа (нос вверх-вниз). Диапазон от 0.01 до 70 градусов', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('process-frames-interval', '0.0', 'Интервал в секундах, втечение которого обрабатываются кадры после окончания детекции движения', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('retry-pause', '30', 'Пауза в секундах перед следующей попыткой захвата кадра после неудачи', 1);
