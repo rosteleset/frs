@@ -1,1 +1,0 @@
-trtexec --onnx=scrfd_10g_bnkps.onnx --saveEngine=model.plan --shapes=input.1:1x3x320x320 --workspace=1024

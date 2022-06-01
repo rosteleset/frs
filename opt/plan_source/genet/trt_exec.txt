@@ -1,1 +1,0 @@
-trtexec --onnx=genet_small_custom_ft.onnx --saveEngine=model.plan --optShapes=input.1:1x3x192x192 --minShapes=input.1:1x3x192x192 --maxShapes=input.1:1x3x192x192 --workspace=3000

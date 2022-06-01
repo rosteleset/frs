@@ -1,1 +1,0 @@
-$ sudo docker run --gpus all -it --rm -v/opt/frs/plan_source:/plan_source nvcr.io/nvidia/tensorrt:21.05-py3

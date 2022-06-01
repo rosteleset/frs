@@ -1,1 +1,0 @@
-trtexec --onnx=glint360k_r50.onnx --saveEngine=model.plan --optShapes=input.1:1x3x112x112 --minShapes=input.1:1x3x112x112 --maxShapes=input.1:1x3x112x112 --workspace=1500
