@@ -1,7 +1,7 @@
 #pragma once
 
-#include "singleton.h"
 #include "frs_api.h"
+#include "singleton.h"
 
 extern concurrencpp::result<void> checkMotion(TaskData task_data);
 extern concurrencpp::result<void> processFrame(TaskData task_data,

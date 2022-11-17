@@ -1,9 +1,9 @@
 #include <utility>
 
-#include "singleton.h"
-#include "frs_api.h"
-#include "tasks.h"
 #include "crow/TinySHA1.hpp"
+#include "frs_api.h"
+#include "singleton.h"
+#include "tasks.h"
 
 using namespace std;
 
@@ -33,7 +33,7 @@ Singleton::~Singleton()
 }
 
 //логи
-void Singleton::addLog(const String &msg) const
+void Singleton::addLog(const String& msg) const
 {
   scoped_lock locker(mtx_log);
 
@@ -54,9 +54,10 @@ void Singleton::loadData()
   try
   {
     auto mysql_session = sql_client->getSession();
-    auto result = mysql_session.sql(SQL_GET_FACE_DESCRIPTORS)
-      .bind(id_worker)
-      .execute();
+    auto result =
+      mysql_session.sql(SQL_GET_FACE_DESCRIPTORS)
+        .bind(id_worker)
+        .execute();
     for (auto row : result)
     {
       int id_descriptor = row[0];
@@ -87,10 +88,11 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
     mysql_session.startTransaction();
 
     //сохраняем дескриптор и изображение
-    id_descriptor = static_cast<int>(mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
-      .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
-      .execute()
-      .getAutoIncrementValue());
+    id_descriptor = static_cast<int>(
+      mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
+        .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
+        .execute()
+        .getAutoIncrementValue());
 
     std::vector<uchar> buff_;
     cv::imencode(".jpg", f_img, buff_);
@@ -113,7 +115,7 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
     return {};
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     double norm_l2 = cv::norm(fd, cv::NORM_L2);
     if (norm_l2 <= 0.0)
@@ -129,20 +131,20 @@ int Singleton::addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const
 }
 
 std::tuple<int, String, String> Singleton::addLogFace(int id_vstream, DateTime log_date, int id_descriptor, double quality,
-   const cv::Rect& face_rect, const string& screenshot) const
+  const cv::Rect& face_rect, const string& screenshot) const
 {
   sha1::SHA1 s;
   auto hash_name = absl::StrCat(absl::FormatTime(log_date), id_vstream);
   s.processBytes(hash_name.data(), hash_name.size());
   uint8_t digest[20];
   s.getDigestBytes(digest);
-  hash_name = absl::BytesToHexString(std::string((const char *)(digest), 16));
+  hash_name = absl::BytesToHexString(std::string((const char*)(digest), 16));
   auto url_part = absl::Substitute("$0/$1/$2/$3", hash_name[0], hash_name[1], hash_name[2], hash_name);
   String image_ext = ".jpg";
   auto file_path = screenshot_path / (url_part + image_ext);
 
   //для теста
-  //auto tt0 = std::chrono::steady_clock::now();
+  // auto tt0 = std::chrono::steady_clock::now();
 
   auto mysql_session = sql_client->getSession();
   int id_log;
@@ -150,18 +152,19 @@ std::tuple<int, String, String> Singleton::addLogFace(int id_vstream, DateTime l
   {
     mysql_session.startTransaction();
 
-    id_log = static_cast<int>(mysql_session.sql(SQL_ADD_LOG_FACE)
-      .bind(id_vstream)
-      .bind(absl::FormatTime(API::DATETIME_FORMAT_LOG_FACES, log_date, absl::LocalTimeZone()))
-      .bind(id_descriptor > 0 ? mysqlx::Value(id_descriptor) : mysqlx::nullvalue)
-      .bind(quality)
-      .bind(url_part + image_ext)
-      .bind(face_rect.x)
-      .bind(face_rect.y)
-      .bind(face_rect.width)
-      .bind(face_rect.height)
-      .execute()
-      .getAutoIncrementValue());
+    id_log = static_cast<int>(
+      mysql_session.sql(SQL_ADD_LOG_FACE)
+        .bind(id_vstream)
+        .bind(absl::FormatTime(API::DATETIME_FORMAT_LOG_FACES, log_date, absl::LocalTimeZone()))
+        .bind(id_descriptor > 0 ? mysqlx::Value(id_descriptor) : mysqlx::nullvalue)
+        .bind(quality)
+        .bind(url_part + image_ext)
+        .bind(face_rect.x)
+        .bind(face_rect.y)
+        .bind(face_rect.width)
+        .bind(face_rect.height)
+        .execute()
+        .getAutoIncrementValue());
 
     mysql_session.commit();
   } catch (const mysqlx::Error& err)
@@ -172,8 +175,8 @@ std::tuple<int, String, String> Singleton::addLogFace(int id_vstream, DateTime l
   }
 
   //для теста
-  //auto tt1 = std::chrono::steady_clock::now();
-  //cout << "____write log_face time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
+  // auto tt1 = std::chrono::steady_clock::now();
+  // cout << "____write log_face time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
 
   //пишем файл со скриншотом
   std::filesystem::create_directories(file_path.parent_path());
@@ -181,8 +184,8 @@ std::tuple<int, String, String> Singleton::addLogFace(int id_vstream, DateTime l
   f << screenshot;
 
   //для теста
-  //auto tt2 = std::chrono::steady_clock::now();
-  //cout << "____write screenshot time: " << std::chrono::duration<double, std::milli>(tt2 - tt1).count() << " ms" << endl;
+  // auto tt2 = std::chrono::steady_clock::now();
+  // cout << "____write screenshot time: " << std::chrono::duration<double, std::milli>(tt2 - tt1).count() << " ms" << endl;
 
   return {id_log, hash_name, http_server_screenshot_url + url_part + image_ext};
 }
@@ -242,10 +245,11 @@ int Singleton::addSGroupFaceDescriptor(int id_sgroup, const FaceDescriptor& fd, 
     mysql_session.startTransaction();
 
     //сохраняем дескриптор и изображение
-    id_descriptor = static_cast<int>(mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
-      .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
-      .execute()
-      .getAutoIncrementValue());
+    id_descriptor = static_cast<int>(
+      mysql_session.sql(SQL_ADD_FACE_DESCRIPTOR)
+        .bind(mysqlx::bytes(fd.data, descriptor_size * sizeof(float)))
+        .execute()
+        .getAutoIncrementValue());
 
     std::vector<uchar> buff_;
     cv::imencode(".jpg", f_img, buff_);
@@ -268,7 +272,7 @@ int Singleton::addSGroupFaceDescriptor(int id_sgroup, const FaceDescriptor& fd, 
     return {};
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     double norm_l2 = cv::norm(fd, cv::NORM_L2);
     if (norm_l2 <= 0.0)
@@ -290,7 +294,7 @@ void Singleton::loadDNNStatsData()
   const auto f_size = std::filesystem::file_size(file_name, ec);
   if (!ec && f_size > 0)
   {
-    HashMap<int, DNNStatsData> dnn_stats_data_copy;
+    dnn_stats_data.clear();
     string s_data(f_size, '\0');
     ifstream f(file_name, std::ios::in | std::ios::binary);
     f.read(s_data.data(), static_cast<streamsize>(f_size));
@@ -300,24 +304,19 @@ void Singleton::loadDNNStatsData()
     {
       auto data = json["data"];
       auto list_data = data.lo();
-      for (auto & item : list_data)
+      for (auto& item : list_data)
         if (item.has("id_vstream") && item["id_vstream"].t() == crow::json::type::Number
-          && item.has("fd_count") && item["fd_count"].t() == crow::json::type::Number
-          && item.has("fc_count") && item["fc_count"].t() == crow::json::type::Number
-          && item.has("fr_count") && item["fr_count"].t() == crow::json::type::Number)
+            && item.has("fd_count") && item["fd_count"].t() == crow::json::type::Number
+            && item.has("fc_count") && item["fc_count"].t() == crow::json::type::Number
+            && item.has("fr_count") && item["fr_count"].t() == crow::json::type::Number)
         {
-          dnn_stats_data_copy[static_cast<int>(item["id_vstream"].i())] = DNNStatsData{
-            static_cast<int>(item["fd_count"].i()),
-            static_cast<int>(item["fc_count"].i()),
-            static_cast<int>(item["fr_count"].i())
-          };
+          auto id_vstream = static_cast<int>(item["id_vstream"].i());
+          if (task_config.conf_vstream_url.contains(id_vstream))
+            dnn_stats_data[id_vstream] = DNNStatsData{
+              static_cast<int>(item["fd_count"].i()),
+              static_cast<int>(item["fc_count"].i()),
+              static_cast<int>(item["fr_count"].i())};
         }
-    }
-
-    //scope for locked mutex
-    {
-      scoped_lock lock(mtx_stats);
-      dnn_stats_data = dnn_stats_data_copy;
     }
   }
 }
@@ -327,9 +326,9 @@ void Singleton::saveDNNStatsData()
 {
   HashMap<int, DNNStatsData> dnn_stats_data_copy;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
-    scoped_lock lock(mtx_stats);
+    ReadLocker lock(mtx_stats);
     dnn_stats_data_copy = dnn_stats_data;
   }
 
@@ -347,10 +346,9 @@ void Singleton::saveDNNStatsData()
       {"fr_count", item.second.fr_count},
     });
   }
-  crow::json::wvalue  json{
+  crow::json::wvalue json{
     {"all", {{"fd_count", all_data.fd_count}, {"fc_count", all_data.fc_count}, {"fr_count", all_data.fr_count}}},
-    {"data", list_data}
-  };
+    {"data", list_data}};
 
   ofstream f(working_path + "/dnn_stats_data.json");
   f << json.dump();

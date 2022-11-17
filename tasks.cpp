@@ -1,9 +1,9 @@
 #include "tasks.h"
 #include "cpr/cpr.h"
 #include "http_client.h"
+#include "singleton.h"
 
 namespace tc = triton::client;
-
 using namespace std;
 
 namespace
@@ -26,7 +26,7 @@ namespace
     return focusMeasure;
   }
 
-  double dist(int x1, int y1, int x2, int y2)
+  double dist(double x1, double y1, double x2, double y2)
   {
     return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
   }
@@ -99,7 +99,7 @@ namespace
 
   struct alignas(float) FaceDetection
   {
-    float bbox[4];  //x1 y1 x2 y2
+    float bbox[4];  // x1 y1 x2 y2
     float face_confidence;
     float landmark[10];
   };
@@ -112,37 +112,38 @@ namespace
   cv::Mat preprocessImage(const cv::Mat& img, int width, int height, float& scale)
   {
     int w, h;
-    float r_w = width / (img.cols * 1.0);
-    float r_h = height / (img.rows * 1.0);
-    if (r_h > r_w) {
+    auto r_w = width / (img.cols * 1.0);
+    auto r_h = height / (img.rows * 1.0);
+    if (r_h > r_w)
+    {
       w = width;
-      h = r_w * img.rows;
+      h = static_cast<int>(r_w * img.rows);
     } else
     {
-      w = r_h * img.cols;
+      w = static_cast<int>(r_h * img.cols);
       h = height;
     }
     cv::Mat re(h, w, CV_8UC3);
     cv::resize(img, re, re.size(), 0, 0, cv::INTER_LINEAR);
     cv::Mat out(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
     re.copyTo(out(cv::Rect(0, 0, re.cols, re.rows)));
-    scale = float(h) / img.rows;
+    scale = static_cast<float>(h) / static_cast<float>(img.rows);
 
     return out;
   }
 
-  //intersection over union
+  // intersection over union
   float iou(float lbox[4], float rbox[4])
   {
     float interBox[] =
       {
-        std::max(lbox[0], rbox[0]), //left
-        std::min(lbox[2], rbox[2]), //right
-        std::max(lbox[1], rbox[1]), //top
-        std::min(lbox[3], rbox[3]), //bottom
+        std::max(lbox[0], rbox[0]),  // left
+        std::min(lbox[2], rbox[2]),  // right
+        std::max(lbox[1], rbox[1]),  // top
+        std::min(lbox[3], rbox[3]),  // bottom
       };
 
-    if(interBox[2] > interBox[3] || interBox[0] > interBox[1])
+    if (interBox[2] > interBox[3] || interBox[0] > interBox[1])
       return 0.0f;
 
     float interBoxS = (interBox[1] - interBox[0]) * (interBox[3] - interBox[2]);
@@ -150,13 +151,13 @@ namespace
   }
 
   //Алгоритм non maximum suppression
-  static inline void nms(std::vector<FaceDetection>& dets, float nms_thresh = 0.4)
+  inline void nms(std::vector<FaceDetection>& dets, float nms_thresh = 0.4)
   {
     std::sort(dets.begin(), dets.end(), cmp);
-    for (size_t m = 0; m < dets.size(); ++m)
+    for (int m = 0; m < dets.size(); ++m)
     {
       auto& item = dets[m];
-      for (size_t n = m + 1; n < dets.size(); ++n)
+      for (int n = m + 1; n < dets.size(); ++n)
       {
         if (iou(item.bbox, dets[n].bbox) > nms_thresh)
         {
@@ -170,8 +171,7 @@ namespace
   //выравнивание области детекции лица
   cv::Mat alignFaceAffineTransform(const cv::Mat& frame, const cv::Mat& src, int face_width, int face_height)
   {
-    cv::Mat dst = (cv::Mat_<double>(5, 2) <<
-      38.2946 / 112.0 * face_width, 51.6963 / 112.0 * face_height,
+    cv::Mat dst = (cv::Mat_<double>(5, 2) << 38.2946 / 112.0 * face_width, 51.6963 / 112.0 * face_height,
       73.5318 / 112.0 * face_width, 51.5014 / 112.0 * face_height,
       56.0252 / 112.0 * face_width, 71.7366 / 112.0 * face_height,
       41.5493 / 112.0 * face_width, 92.3655 / 112.0 * face_height,
@@ -194,13 +194,13 @@ namespace
     int input_height{};
     double face_confidence_threshold{};
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       server_url = singleton.getConfigParamValue<String>(CONF_DNN_FD_INFERENCE_SERVER, id_vstream);
       model_name = singleton.getConfigParamValue<String>(CONF_DNN_FD_MODEL_NAME);
       input_tensor_name = singleton.getConfigParamValue<String>(CONF_DNN_FD_INPUT_TENSOR_NAME);
-      input_width =  singleton.getConfigParamValue<int>(CONF_DNN_FD_INPUT_WIDTH);
+      input_width = singleton.getConfigParamValue<int>(CONF_DNN_FD_INPUT_WIDTH);
       input_height = singleton.getConfigParamValue<int>(CONF_DNN_FD_INPUT_HEIGHT);
       face_confidence_threshold = singleton.getConfigParamValue<double>(CONF_FACE_CONFIDENCE_THRESHOLD, id_vstream);
     }
@@ -214,25 +214,25 @@ namespace
     }
 
     //для теста
-    //auto tt1 = std::chrono::steady_clock::now();
-    //cout << "  before preprocess time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
-    //tt0 = tt1;
+    // auto tt1 = std::chrono::steady_clock::now();
+    // cout << "  before preprocess time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // tt0 = tt1;
 
     float scale = 1.0f;
     cv::Mat pr_img = preprocessImage(frame, input_width, input_height, scale);
 
-    //tt1 = std::chrono::steady_clock::now();
-    //cout << "  preprocess image time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
-    //tt0 = tt1;
+    // tt1 = std::chrono::steady_clock::now();
+    // cout << "  preprocess image time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // tt0 = tt1;
 
     int channels = 3;
     int input_size = channels * input_width * input_height;
     vector<float> input_buffer(input_size);
 
-    for (size_t c = 0; c < channels; ++c)
-      for (size_t h = 0; h < input_height; ++h)
-        for (size_t w = 0; w < input_width; ++w)
-          input_buffer[c * input_height * input_width + h * input_width + w] = (static_cast<float>(pr_img.at<cv::Vec3b>(h, w)[2 - c]) - 127.5f) / 128.0;
+    for (int c = 0; c < channels; ++c)
+      for (int h = 0; h < input_height; ++h)
+        for (int w = 0; w < input_width; ++w)
+          input_buffer[c * input_height * input_width + h * input_width + w] = (static_cast<float>(pr_img.at<cv::Vec3b>(h, w)[2 - c]) - 127.5f) / 128.0f;
 
     vector<uint8_t> input_data(input_size * sizeof(float));
     memcpy(input_data.data(), input_buffer.data(), input_data.size());
@@ -329,9 +329,7 @@ namespace
 
     std::vector<tc::InferInput*> inputs = {input_ptr.get()};
     std::vector<const tc::InferRequestedOutput*> outputs = {
-      output497_ptr.get(), output494_ptr.get(), output477_ptr.get(), output454_ptr.get(), output451_ptr.get()
-      , output474_ptr.get(), output448_ptr.get(), output500_ptr.get(), output471_ptr.get()
-    };
+      output497_ptr.get(), output494_ptr.get(), output477_ptr.get(), output454_ptr.get(), output451_ptr.get(), output474_ptr.get(), output448_ptr.get(), output500_ptr.get(), output471_ptr.get()};
     err = input_ptr->AppendRaw(input_data);
     if (!err.IsOk())
     {
@@ -344,15 +342,15 @@ namespace
     tc::InferResult* result;
 
     //для теста
-    //tt1 = std::chrono::steady_clock::now();
-    //cout << "  before inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
-    //tt0 = tt1;
+    // tt1 = std::chrono::steady_clock::now();
+    // cout << "  before inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // tt0 = tt1;
 
     err = triton_client->Infer(&result, options, inputs, outputs);
 
-    //tt1 = std::chrono::steady_clock::now();
-    //cout << "  inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
-    //tt0 = tt1;
+    // tt1 = std::chrono::steady_clock::now();
+    // cout << "  inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // tt0 = tt1;
 
     if (!err.IsOk())
     {
@@ -381,21 +379,21 @@ namespace
       float* bbox_preds_data;
       size_t bbox_preds_size;
       result_ptr->RawData(output_names[i + fmc], (const uint8_t**)(&bbox_preds_data), &bbox_preds_size);
-      auto bbox_preds = cv::Mat(bbox_preds_size / 4 / sizeof(float), 4, CV_32F, bbox_preds_data);
+      auto bbox_preds = cv::Mat(static_cast<int>(bbox_preds_size / 4 / sizeof(float)), 4, CV_32F, bbox_preds_data);
       bbox_preds *= feat_stride[i];
 
       float* kps_preds_data;
       size_t kps_preds_size;
       result_ptr->RawData(output_names[i + fmc * 2], (const uint8_t**)(&kps_preds_data), &kps_preds_size);
-      auto kps_preds = cv::Mat(kps_preds_size / 10 / sizeof(float), 10, CV_32F, kps_preds_data);
+      auto kps_preds = cv::Mat(static_cast<int>(kps_preds_size / 10 / sizeof(float)), 10, CV_32F, kps_preds_data);
       kps_preds *= feat_stride[i];
 
       int height = input_height / feat_stride[i];
       int width = input_width / feat_stride[i];
       for (int k = 0; k < height * width; ++k)
       {
-        float px = feat_stride[i] * (k % height);
-        float py = feat_stride[i] * (k / height);
+        auto px = static_cast<float>(feat_stride[i] * (k % height));
+        auto py = static_cast<float>(feat_stride[i] * static_cast<int>(k / height));
         if (scores_data[2 * k] >= face_confidence_threshold)
         {
           FaceDetection det{};
@@ -430,8 +428,8 @@ namespace
     }
 
     //для теста
-    //tt1 = std::chrono::steady_clock::now();
-    //cout << "  post process time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // tt1 = std::chrono::steady_clock::now();
+    // cout << "  post process time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
 
     nms(detected_faces);
 
@@ -469,7 +467,8 @@ namespace
       r[i].class_index = i;
       r[i].score = exp(v[i]) / s;
     }
-    std::sort(r.begin(), r.end(), [](const auto& left, const auto& right) {return left.score > right.score;});
+    std::sort(r.begin(), r.end(), [](const auto& left, const auto& right)
+      { return left.score > right.score; });
     return r;
   }
 
@@ -485,7 +484,7 @@ namespace
     String output_tensor_name;
     int class_count{};
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       server_url = singleton.getConfigParamValue<String>(CONF_DNN_FC_INFERENCE_SERVER, id_vstream);
@@ -568,13 +567,13 @@ namespace
     tc::InferResult* result;
 
     //для теста
-    //auto tt0 = std::chrono::steady_clock::now();
+    // auto tt0 = std::chrono::steady_clock::now();
 
     err = triton_client->Infer(&result, options, inputs, outputs);
 
     //для теста
-    //auto tt1 = std::chrono::steady_clock::now();
-    //cout << "  inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+    // auto tt1 = std::chrono::steady_clock::now();
+    // cout << "  inference time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
 
     if (!err.IsOk())
     {
@@ -632,7 +631,7 @@ namespace
     int input_height{};
     String output_tensor_name;
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       server_url = singleton.getConfigParamValue<String>(CONF_DNN_FR_INFERENCE_SERVER, id_vstream);
@@ -783,7 +782,7 @@ namespace
   }
 
   //функция для записи данных события
-  void saveEventData(absl::string_view event_id, const vector<FaceData>& faces, int best_index)
+  void saveEventData(int id_vstream, absl::string_view event_id, const vector<FaceData>& faces, int best_index)
   {
     auto& singleton = Singleton::instance();
     if (!faces.empty())
@@ -801,8 +800,7 @@ namespace
             landmarks5.push_back(faces[i].landmarks5.at<float>(k, 1));
           }
         json_faces.push_back(
-          {
-            {"left", faces[i].face_rect.tl().x},
+          {{"left", faces[i].face_rect.tl().x},
             {"top", faces[i].face_rect.tl().y},
             {"width", faces[i].face_rect.width},
             {"height", faces[i].face_rect.height},
@@ -813,8 +811,7 @@ namespace
             {"face_class_confidence", faces[i].face_class_confidence},
             {"is_frontal", faces[i].is_frontal},
             {"is_non_blurry", faces[i].is_non_blurry},
-            {"is_work_area", faces[i].is_work_area}
-          });
+            {"is_work_area", faces[i].is_work_area}});
 
         if (!faces[i].fd.empty())
         {
@@ -827,14 +824,14 @@ namespace
 
       //пишем JSON-данные события
       crow::json::wvalue json_data{
+        {"id_vstream", id_vstream},
         {"best_face_index", best_index},
-        {"faces", json_faces}
-      };
+        {"faces", json_faces}};
       ofstream f_json(singleton.screenshot_path / (path_part + ".json"));
       f_json << json_data.dump();
     }
   }
-}
+}  // namespace
 
 concurrencpp::result<void> checkMotion(TaskData task_data)
 {
@@ -853,14 +850,16 @@ concurrencpp::result<void> checkMotion(TaskData task_data)
 
     bool do_task = false;
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       scoped_lock lock(singleton.mtx_capture);
       singleton.is_door_open.erase(task_data.id_vstream);
       auto tp_start_motion = singleton.id_vstream_to_start_motion.contains(task_data.id_vstream)
-        ? singleton.id_vstream_to_start_motion.at(task_data.id_vstream) : time_point{};
+                               ? singleton.id_vstream_to_start_motion.at(task_data.id_vstream)
+                               : time_point{};
       auto tp_end_motion = singleton.id_vstream_to_end_motion.contains(task_data.id_vstream)
-        ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream) : time_point{};
+                             ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream)
+                             : time_point{};
       if (tp_start_motion > tp_end_motion)
       {
         do_task = true;
@@ -949,7 +948,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
     double conf_delay_between_frames{};
     HashMap<int, String> conf_sgroup_callback_url;
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       log_level = static_cast<LogsLevel>(singleton.getConfigParamValue<int>(CONF_LOGS_LEVEL, task_data.id_vstream));
@@ -962,8 +961,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       } else
         url = task_data.frame_url;
 
-      request_timeout_ms = static_cast<int32_t>(1000 *
-        singleton.getConfigParamValue<double>(CONF_CAPTURE_TIMEOUT, task_data.id_vstream));
+      request_timeout_ms = static_cast<int32_t>(1000 * singleton.getConfigParamValue<double>(CONF_CAPTURE_TIMEOUT, task_data.id_vstream));
       max_capture_error_count = singleton.getConfigParamValue<int>(CONF_MAX_CAPTURE_ERROR_COUNT, task_data.id_vstream);
       conf_margin = singleton.getConfigParamValue<double>(CONF_MARGIN, task_data.id_vstream);
       conf_has_vstream_region = singleton.task_config.conf_vstream_region.contains(task_data.id_vstream);
@@ -984,8 +982,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           conf_callback_url = it->second;
       }
 
-      conf_callback_timeout_ms = static_cast<int32_t>(1000 *
-        singleton.getConfigParamValue<double>(CONF_CALLBACK_TIMEOUT, task_data.id_vstream));
+      conf_callback_timeout_ms = static_cast<int32_t>(1000 * singleton.getConfigParamValue<double>(CONF_CALLBACK_TIMEOUT, task_data.id_vstream));
       conf_comments_no_faces = singleton.getConfigParamValue<String>(CONF_COMMENTS_NO_FACES);
       conf_comments_partial_face = singleton.getConfigParamValue<String>(CONF_COMMENTS_PARTIAL_FACE);
       conf_comments_non_frontal_face = singleton.getConfigParamValue<String>(CONF_COMMENTS_NON_FRONTAL_FACE);
@@ -1028,7 +1025,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       co_await concurrencpp::resume_on(singleton.runtime->background_executor());
 
       cpr::SslOptions ssl_opts = cpr::Ssl(cpr::ssl::VerifyHost{false}, cpr::ssl::VerifyPeer{false},
-        cpr::ssl::VerifyStatus{false});
+        cpr::ssl::VerifyStatus{false}, cpr::ssl::Ciphers{"DEFAULT@SECLEVEL=1"});
       cpr::Response response_image = cpr::Get(cpr::Url{url}, cpr::Timeout(request_timeout_ms), ssl_opts);
       if (response_image.status_code != HTTP_SUCCESS)
       {
@@ -1073,7 +1070,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
     }
 
     //для теста
-    //auto tt00 = std::chrono::steady_clock::now();
+    // auto tt00 = std::chrono::steady_clock::now();
 
     //декодирование изображения
     cv::Mat frame = cv::imdecode(std::vector<char>(image_data.begin(), image_data.end()), cv::IMREAD_COLOR);
@@ -1092,7 +1089,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       DNNStatsData dnn_stats_data;
 
       //для теста
-      //auto tt0 = std::chrono::steady_clock::now();
+      // auto tt0 = std::chrono::steady_clock::now();
 
       //переключаемся в фоновый режим
       if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1110,8 +1107,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       ++dnn_stats_data.fd_count;
 
       //для теста
-      //auto tt1 = std::chrono::steady_clock::now();
-      //cout << "__face detection time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+      // auto tt1 = std::chrono::steady_clock::now();
+      // cout << "__face detection time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
 
       if (is_ok)
       {
@@ -1128,20 +1125,24 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         if (log_level >= LOGS_VERBOSE || task_data.task_type == TASK_TEST)
           singleton.addLog(absl::Substitute("Обрабатываем найденные лица, количество: $0", detected_faces.size()));
 
-        for (int i = 0; i < detected_faces.size(); ++i)
+        for (auto& detected_face : detected_faces)
         {
           if (log_level >= LOGS_VERBOSE || task_data.task_type == TASK_TEST)
-            singleton.addLog(absl::Substitute("      вероятность лица: $0", detected_faces[i].face_confidence));
+            singleton.addLog(absl::Substitute("      вероятность лица: $0", detected_face.face_confidence));
 
-          cv::Rect work_region = cv::Rect(conf_margin / 100.0 * frame.cols, conf_margin / 100.0 * frame.rows,
-            frame.cols - 2 * frame.cols * conf_margin / 100.0,
-            frame.rows - 2 * frame.rows * conf_margin / 100.0);
+          cv::Rect work_region = cv::Rect(
+            static_cast<int>(conf_margin / 100.0 * frame.cols),
+            static_cast<int>(conf_margin / 100.0 * frame.rows),
+            static_cast<int>(frame.cols - 2 * frame.cols * conf_margin / 100.0),
+            static_cast<int>(frame.rows - 2 * frame.rows * conf_margin / 100.0));
           if (conf_has_vstream_region)
             work_region = work_region & conf_work_region;
 
-          cv::Rect face_rect = cv::Rect(detected_faces[i].bbox[0], detected_faces[i].bbox[1],
-            detected_faces[i].bbox[2] - detected_faces[i].bbox[0] + 1,
-            detected_faces[i].bbox[3] - detected_faces[i].bbox[1] + 1);
+          cv::Rect face_rect = cv::Rect(
+            static_cast<int>(detected_face.bbox[0]),
+            static_cast<int>(detected_face.bbox[1]),
+            static_cast<int>(detected_face.bbox[2] - detected_face.bbox[0] + 1),
+            static_cast<int>(detected_face.bbox[3] - detected_face.bbox[1] + 1));
 
           face_data.emplace_back(FaceData());
           face_data.back().face_rect = face_rect;
@@ -1159,7 +1160,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
 
           if (log_level >= LOGS_VERBOSE || task_data.task_type == TASK_TEST)
             singleton.addLog("      лицо в рабочей области.");
-          auto landmarks5 = cv::Mat(5, 2, CV_32F, detected_faces[i].landmark);
+          auto landmarks5 = cv::Mat(5, 2, CV_32F, detected_face.landmark);
 
           face_data.back().landmarks5 = landmarks5.clone();
 
@@ -1173,8 +1174,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           }
 
           //"выравниваем" лицо
-          cv::Mat aligned_face = alignFaceAffineTransform(frame, landmarks5, singleton.face_width,
-            singleton.face_height);
+          cv::Mat aligned_face = alignFaceAffineTransform(frame, landmarks5, static_cast<int>(singleton.face_width),
+            static_cast<int>(singleton.face_height));
 
           if (aligned_face.cols != singleton.face_width || aligned_face.rows != singleton.face_height)
           {
@@ -1195,7 +1196,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           if (log_level >= LOGS_VERBOSE || task_data.task_type == TASK_TEST)
             singleton.addLog(absl::Substitute("      лапласиан: $0", laplacian));
           if (laplacian < conf_laplacian_threshold
-            || laplacian > conf_laplacian_threshold_max)
+              || laplacian > conf_laplacian_threshold_max)
           {
             if (log_level >= LOGS_VERBOSE || task_data.task_type == TASK_TEST)
               singleton.addLog("      лицо размыто или слишком четкое.");
@@ -1249,8 +1250,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           }
 
           if (face_data.back().face_class_index == FaceClassIndexes::FACE_NONE
-            || face_data.back().face_class_index != FaceClassIndexes::FACE_NORMAL
-            && face_data.back().face_class_confidence > conf_face_class_confidence_threshold)
+              || face_data.back().face_class_index != FaceClassIndexes::FACE_NORMAL
+                   && face_data.back().face_class_confidence > conf_face_class_confidence_threshold)
             continue;
 
           face_data.back().face_class_index = FaceClassIndexes::FACE_NORMAL;
@@ -1268,7 +1269,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           cv::Mat face_descriptor;
 
           //для теста
-          //tt0 = std::chrono::steady_clock::now();
+          // tt0 = std::chrono::steady_clock::now();
 
           //переключаемся в фоновый режим
           if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1290,8 +1291,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           ++dnn_stats_data.fr_count;
 
           //для теста
-          //tt1 = std::chrono::steady_clock::now();
-          //cout << "__extract face descriptor time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+          // tt1 = std::chrono::steady_clock::now();
+          // cout << "__extract face descriptor time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
 
           face_data.back().fd = face_descriptor.clone();
           double norm_l2 = cv::norm(face_descriptor, cv::NORM_L2);
@@ -1304,15 +1305,15 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           int id_descriptor{};
 
           //для теста
-          //tt0 = std::chrono::steady_clock::now();
+          // tt0 = std::chrono::steady_clock::now();
 
-          //scope for lock mutex
+          // scope for lock mutex
           {
             ReadLocker lock(singleton.mtx_task_config);
 
             if (task_data.id_vstream > 0)
               for (auto it_descriptor = singleton.id_vstream_to_id_descriptors[task_data.id_vstream].cbegin();
-                it_descriptor != singleton.id_vstream_to_id_descriptors[task_data.id_vstream].cend(); ++it_descriptor)
+                   it_descriptor != singleton.id_vstream_to_id_descriptors[task_data.id_vstream].cend(); ++it_descriptor)
               {
                 double cos_distance = Singleton::cosineDistance(face_descriptor, singleton.id_descriptor_to_data[*it_descriptor]);
                 if (cos_distance > max_cos_distance)
@@ -1362,8 +1363,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           }
 
           //для теста
-          //tt1 = std::chrono::steady_clock::now();
-          //cout << "__recognition time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
+          // tt1 = std::chrono::steady_clock::now();
+          // cout << "__recognition time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
 
           face_data.back().cosine_distance = max_cos_distance;
 
@@ -1385,7 +1386,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             if (face_data.back().laplacian > best_quality && recognized_face_count == 0)
             {
               best_quality = face_data.back().laplacian;
-              best_face_index = face_data.size() - 1;
+              best_face_index = static_cast<int>(face_data.size()) - 1;
             }
           } else
           {
@@ -1396,7 +1397,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             if (recognized_face_count == 1 || face_data.back().laplacian > best_quality)
             {
               best_quality = face_data.back().laplacian;
-              best_face_index = face_data.size() - 1;
+              best_face_index = static_cast<int>(face_data.size()) - 1;
             }
 
             if (task_data.task_type == TASK_PROCESS_FRAME)
@@ -1408,12 +1409,12 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             if (face_data.back().ioa > 0.999 && face_data.back().laplacian > best_register_quality)
             {
               best_register_quality = face_data.back().laplacian;
-              best_register_index = face_data.size() - 1;
+              best_register_index = static_cast<int>(face_data.size()) - 1;
             }
             if (fabs(best_register_quality) < 0.001 && face_data.back().ioa > best_register_ioa)
             {
               best_register_ioa = face_data.back().ioa;
-              best_register_index = face_data.size() - 1;
+              best_register_index = static_cast<int>(face_data.size()) - 1;
             }
           }
         }
@@ -1421,7 +1422,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         //для сбора статистики инференса
         if (task_data.task_type == TASK_RECOGNIZE && dnn_stats_data.fd_count > 0)
         {
-          lock_guard lock(singleton.mtx_stats);
+          WriteLocker lock(singleton.mtx_stats);
           singleton.dnn_stats_data[task_data.id_vstream].fd_count += dnn_stats_data.fd_count;
           singleton.dnn_stats_data[task_data.id_vstream].fc_count += dnn_stats_data.fc_count;
           singleton.dnn_stats_data[task_data.id_vstream].fr_count += dnn_stats_data.fr_count;
@@ -1432,7 +1433,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           singleton.addLog(absl::Substitute("Обнаружены лица детектором: id_vstream = $0", task_data.id_vstream));
 
           //для теста
-          //auto tt000 = std::chrono::steady_clock::now();
+          // auto tt000 = std::chrono::steady_clock::now();
 
           //переключаемся в фоновый режим
           if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1441,7 +1442,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
 
           auto [id_log, event_id, screenshot_url] = singleton.addLogFace(task_data.id_vstream, absl::Now(), face_data[best_face_index].id_descriptor,
             face_data[best_face_index].laplacian, face_data[best_face_index].face_rect, image_data);
-          saveEventData(event_id, face_data, best_face_index);
+          saveEventData(task_data.id_vstream, event_id, face_data, best_face_index);
 
           if (id_log > 0 && face_data[best_face_index].id_descriptor > 0)
           {
@@ -1481,8 +1482,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           co_await concurrencpp::resume_on(singleton.runtime->thread_pool_executor());
 
           //для теста
-          //auto tt001 = std::chrono::steady_clock::now();
-          //cout << "__write log time: " << std::chrono::duration<double, std::milli>(tt001 - tt000).count() << " ms" << endl;
+          // auto tt001 = std::chrono::steady_clock::now();
+          // cout << "__write log time: " << std::chrono::duration<double, std::milli>(tt001 - tt000).count() << " ms" << endl;
         }
 
         //отправляем события о распознавании лиц из специальных групп
@@ -1555,10 +1556,9 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
               if (task_data.id_vstream > 0)
                 response->id_descriptor = singleton.addFaceDescriptor(task_data.id_vstream,
                   face_data[best_register_index].fd, frame(r));
-              else
-                if (task_data.id_sgroup > 0)
-                  response->id_descriptor = singleton.addSGroupFaceDescriptor(task_data.id_sgroup,
-                    face_data[best_register_index].fd, frame(r));
+              else if (task_data.id_sgroup > 0)
+                response->id_descriptor = singleton.addSGroupFaceDescriptor(task_data.id_sgroup,
+                  face_data[best_register_index].fd, frame(r));
 
               //переключаемся в основной режим
               if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1591,17 +1591,14 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
               auto check_index = 0;
               if (!face_data[check_index].is_work_area)
                 response->comments = conf_comments_partial_face;
+              else if (!face_data[check_index].is_frontal)
+                response->comments = conf_comments_non_frontal_face;
+              else if (!face_data[check_index].is_non_blurry)
+                response->comments = conf_comments_blurry_face;
+              else if (face_data[check_index].face_class_index != FaceClassIndexes::FACE_NORMAL)
+                response->comments = conf_comments_non_normal_face_class;
               else
-                if (!face_data[check_index].is_frontal)
-                  response->comments = conf_comments_non_frontal_face;
-                else
-                  if (!face_data[check_index].is_non_blurry)
-                    response->comments = conf_comments_blurry_face;
-                  else
-                    if (face_data[check_index].face_class_index != FaceClassIndexes::FACE_NORMAL)
-                      response->comments = conf_comments_non_normal_face_class;
-                    else
-                      response->comments = conf_comments_inference_error;
+                response->comments = conf_comments_inference_error;
             } else
               response->comments = conf_comments_no_faces;
           }
@@ -1610,17 +1607,16 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         //отрисовка рамки и маркеров, сохранение кадра
         if (task_data.task_type == TASK_TEST)
         {
-          for (auto&& f: face_data)
+          for (auto&& f : face_data)
           {
             if (!f.landmarks5.empty())
               for (int k = 0; k < 5; ++k)
-                cv::circle(frame, cv::Point(f.landmarks5.at<float>(k, 0), f.landmarks5.at<float>(k, 1)), 1,
+                cv::circle(frame, cv::Point(static_cast<int>(f.landmarks5.at<float>(k, 0)), static_cast<int>(f.landmarks5.at<float>(k, 1))), 1,
                   cv::Scalar(255 * (k * 2 > 2), 255 * (k * 2 > 0 && k * 2 < 8), 255 * (k * 2 < 6)), 4);
             cv::rectangle(frame, f.face_rect, cv::Scalar(0, 200, 0));
           }
 
-          auto frame_indx = chrono::duration_cast<chrono::milliseconds>(
-            chrono::steady_clock::now().time_since_epoch()).count();
+          auto frame_indx = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
 
           //переключаемся в фоновый режим
           if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1654,16 +1650,18 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
     {
       bool do_capture = false;
 
-      //scope for lock mutex
+      // scope for lock mutex
       {
         scoped_lock lock(singleton.mtx_capture);
         auto tp_start_motion = singleton.id_vstream_to_start_motion.contains(task_data.id_vstream)
-          ? singleton.id_vstream_to_start_motion.at(task_data.id_vstream) : time_point{};
+                                 ? singleton.id_vstream_to_start_motion.at(task_data.id_vstream)
+                                 : time_point{};
         auto tp_end_motion = singleton.id_vstream_to_end_motion.contains(task_data.id_vstream)
-          ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream) : time_point{};
+                               ? singleton.id_vstream_to_end_motion.at(task_data.id_vstream)
+                               : time_point{};
         if (tp_start_motion <= tp_end_motion
-          && tp_end_motion + std::chrono::milliseconds(static_cast<int>(1000 * conf_process_frames_interval)) <
-          std::chrono::steady_clock::now() || singleton.is_door_open.contains(task_data.id_vstream))
+              && tp_end_motion + std::chrono::milliseconds(static_cast<int>(1000 * conf_process_frames_interval)) < std::chrono::steady_clock::now()
+            || singleton.is_door_open.contains(task_data.id_vstream))
         {
           if (!singleton.is_door_open.contains(task_data.id_vstream))
             singleton.is_capturing.erase(task_data.id_vstream);  //прекращаем захватывать кадры
@@ -1681,8 +1679,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
     }
 
     //для теста
-    //auto tt01 = std::chrono::steady_clock::now();
-    //cout << "__processFrame time: " << std::chrono::duration<double, std::milli>(tt01 - tt00).count() << " ms\n";
+    // auto tt01 = std::chrono::steady_clock::now();
+    // cout << "__processFrame time: " << std::chrono::duration<double, std::milli>(tt01 - tt00).count() << " ms\n";
   } catch (const concurrencpp::errors::broken_task& e)
   {
     //ничего не делаем
@@ -1708,7 +1706,7 @@ concurrencpp::result<void> removeOldLogFaces(bool do_delay)
   double interval_live;
   double interval_clear_log;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     interval_live = singleton.getConfigParamValue<double>(CONF_LOG_FACES_LIVE_INTERVAL);

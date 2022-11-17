@@ -1,9 +1,38 @@
 ## Описание проекта FRS
+Face Recognition System (FRS) - это система распознавания лиц, которая используется для открывания дверей с установленными домофонами от компании "ЛАНТА" в Тамбове. FRS, по сути, является web-сервером. Для запросов используется RESTful web API. Шаги для генерации документации по API методам описаны ниже в разделе "Документация по API".
 
-Face Recognition System (FRS) - это система распознавания лиц, которая используется для открывания дверей с установленными домофонами от компании "ЛАНТА" в Тамбове. FRS, по сути, является web-сервером. Для запросов используется RESTful web API.
-Ниже описывается установка и настройка программы. В качестве примера используется свежеустановленная операционная система Ubuntu 20.04. Вы можете пропускать шаги, если требуемые зависимости уже установлены или использовать другие способы по установке пакетов.
+## Общая схема взаимодействия с FRS
+Первым делом, ваш бэкенд, с помощью вызова API метода **addStream**, регистрирует видео потоки. Основными параметрами метода являются:
+- **streamId** - внутренний для бэкенда (внешний для FRS) идентификатор видео потока;
+- **url** - это URL для захвата кадра с видео потока. FRS не декодирует видео, а работает с отдельными кадрами (скриншотами). Например, URL может выглядеть как ***http://<имя хоста>/cgi-bin/images_cgi?channel=0&user=admin&pwd=<пароль>***
+- **callback** - это URL, который FRS будет использовать, когда распознает зарегистрированное лицо. Например, ***http://<адрес-бэкенда>/face_recognized?stream_id=1***
 
-## Установка драйверов NVIDIA
+Для регистрации лиц используется метод **registerFace**. Основные параметры метода:
+- **streamId** - идентификатор видео потока;
+- **url** - это URL с изображением лица, которое нужно зарегистрировать. Например, ***http://<адрес-бэкенда>/image_to_register.jpg***
+В случае успешной регистрации возвращается внутренний для FRS (внешний для бэкенда) уникальный идентификатор зарегистрированного лица - **faceId**.
+
+Для старта и окончания обработки кадров используется метод **motionDetection**. Основная идея заключается в том, чтобы FRS обрабатывала кадры только тогда, когда зафиксировано движение перед домофоном и в кадре могут быть лица. Параметры метода:
+- **streamId** - идентификатор видео потока;
+- **start** - признак начала или окончания движения. Если **start="t"**, то FRS начинает через каждую секунду (задаётся параметром *delay-between-frames*) обрабатывать кадр с видео потока. Если **start="f"**, то FRS прекращает обработку.
+
+Под обработкой кадра подразумевается следующая цепочка действий:
+1. Поиск лиц с помощью нейронной сети *scrfd*.
+2. Если лица найдены, то каждое проверяется на "размытость" и "фронтальность".
+3. Если лицо не размыто (чёткое изображение) и фронтально, то с помощью нейронной сети *genet* определяется наличие маски и тёмные очков.
+4. Для каждого лица без маски и без тёмных очков, с помощью нейронной сети *arcface*, вычисляется биометрический шаблон лица, он же дескриптор. Математически, дескриптор представляет собой 512-ти мерный вектор.
+5. Далее каждый такой дескриптор попарно сравнивается с зарегистрированными в системе. Сравнение делается путём вычисления косинуса угла между векторами-дескрипторами: чем ближе значение к единице, тем больше похоже лицо на зарегистрированное. Если самое максимальное значение косинуса больше порогового значения (параметр *tolerance*), то лицо считается распознанным и FRS вызывает callback (событие распознавания лица) и в качестве параметров указывает идентификатор дескриптора (*faceId*) и внутренний для FRS (внешний для бэкенда) идентификатор события (*eventId*). Если в одном кадре окажется несколько распознанных лиц, то callback будет вызван для самого "качественного" ("лучшего") лица (параметр *blur*).
+6. Каждое найденное неразмытое, фронтальное, без маски и без тёмных очков, лучшее лицо временно хранится в журнале FRS.
+
+С помощью метода **bestQuality** у FRS можно запрашивать "лучший" кадр из журнала.  Например, незнакомый системе человек подошёл к домофону и открыл дверь ключом. Бэкенд знает время открытия ключом (date) и запрашивает лучший кадр у FRS. FRS ищет у себя в журнале кадр с максимальным *blur* из диапазона времени [date - best-quality-interval-before; date + best-quality-interval-after] и выдаёт его в качестве результата. Такой кадр - хороший кандидат для регистрации лица с помощью метода **registerFace**. Как правило, для хорошего распознавания необходимо зарегистрировать несколько лиц одного человека, в том числе с кадров, сделанных в тёмное время суток, когда камера переходит в инфракрасный режим работы.
+
+## Специальные группы FRS
+Специальная группа - это отдельная, изолированная и независимая от других группа лиц для распознавания (со своим *callback*) на всех зарегистрированных видео потоках. Из бэкенда, с помощью вызова методов addSpecialGroup, updateSpecialGroup, deleteSpecialGroup, можно создавать, изменять и удалять специальные группы. Методы с префиксом sg (sgRegisterFace, sgDeleteFaces, sgListFaces, sgUpdateGroup, sgRenewToken) могут быть использованы "третьей" стороной, поэтому в них применяется авторизация по токену. Например, вы можете создать специальную группу для поиска людей и разрешить вызывать sg-методы не из вашего бэкенда.
+
+## Установка и настройка FRS
+Ниже описывается установка и настройка программы. В качестве примера используется свежеустановленная операционная система Ubuntu 20.04. Вы можете пропускать шаги, если требуемые зависимости уже установлены или использовать другие способы по установке пакетов. Для краткости, использование аббревиатуры GPU в нашем описании подразумевает графические процессоры компании NVIDIA.
+
+### Установка драйверов NVIDIA (если используется GPU)
 Команды взяты [отсюда](https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts).
 ```bash
 $ sudo apt-get install linux-headers-$(uname -r)
@@ -17,74 +46,58 @@ $ sudo apt-get -y install cuda-drivers-470 --no-install-recommends
 ```
 Перезагрузить систему.
 
-## Установка зависимостей
+### Установка и сборка зависимостей
 ```bash
 $ sudo apt-get update
-$ sudo apt-get --yes install ninja-build build-essential libssl-dev rapidjson-dev zlib1g-dev wget lsb-release software-properties-common git unzip
+$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev
 ```
 
-### Установка Clang
+#### Установка Clang и libc++
 Для сборки проекта требуется Clang версии 14 или выше. Установка описана [здесь](https://apt.llvm.org/). Мы воспользуемся предлагаемым автоматическим скриптом:
 ```bash
 $ sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+$ sudo apt-get --yes install libc++-14-dev libc++abi-14-dev libunwind-14-dev
 $ sudo ldconfig
+$ export CC=clang-14
+$ export CXX=clang++-14
+$ export CXXFLAGS=-stdlib=libc++
+```
+**Важно!** Дальнейшая сборка должна идти с корректными значениями переменных окружения *CC*, *CXX*, *CXXFLAGS*. Если планируете использовать дополнительные консоли, то сначала необходимо выполнить команды:
+```bash
+$ export CC=clang-14
+$ export CXX=clang++-14
+$ export CXXFLAGS=-stdlib=libc++
 ```
 
-### Сборка и установка CMake
-Если есть установленная версия ниже 3.17.3, то потребуется удаление старой и сборка с установкой более свежей версии:
+#### Сборка CMake
+Если уже установлен CMake версии не ниже 3.17.3 , то этот шаг можно пропустить и дальше вместо *~/cmake-3.23.1/bin/cmake* использовать короткий вариант *cmake*.
 ```bash
-$ sudo apt purge --auto-remove cmake
 $ cd ~
 $ wget https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1.tar.gz
 $ tar -zxvf cmake-3.23.1.tar.gz
 $ cd cmake-3.23.1
 $ ./bootstrap -- -DCMAKE_BUILD_TYPE:STRING=Release
 $ make -j`nproc`
-$ sudo make install
 ```
 
-### Сборка и установка libc++
-За основу берём шаги из [документации](https://libcxx.llvm.org/BuildingLibcxx.html#the-default-build). В данном примере используется Clang версии 14. В вашем случае может быть более свежая версия.
-```bash
-$ cd ~
-$ sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 30
-$ sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 30
-$ export CC=clang
-$ export CXX=clang++
-$ git clone https://github.com/llvm/llvm-project.git
-$ cd llvm-project && mkdir build
-$ cmake -G Ninja -S runtimes -B build -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" -DCMAKE_BUILD_TYPE=Release
-$ ninja -C build cxx cxxabi unwind
-$ sudo ninja -C build install-cxx install-cxxabi install-unwind
-$ sudo ldconfig
-$ export CXXFLAGS=-stdlib=libc++
-```
-**Важно!** Дальнейшая сборка должна идти с корректными значениями переменных окружения *CC*, *CXX*, *CXXFLAGS*. Если планируете использовать дополнительные консоли, то сначала необходимо выполнить команды:
-```bash
-$ export CC=clang
-$ export CXX=clang++
-$ export CXXFLAGS=-stdlib=libc++
-```
-
-### Сборка и установка Boost
+#### Сборка Boost
 ```bash
 $ cd ~
 $ wget https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.zip
 $ unzip boost_1_79_0.zip
 $ cd boost_1_79_0/tools/build
-$ ./bootstrap.sh
-$ sudo ./b2 install --prefix=/usr/local
+$ ./bootstrap.sh --cxx=clang++-14 --cxxflags=-stdlib=libc++
 $ cd ~/boost_1_79_0
-$ sudo b2 --build-dir=./build --with-filesystem --with-program_options --with-system --with-thread --with-date_time toolset=clang variant=release link=static runtime-link=static cxxflags="-std=c++20 -stdlib=libc++" linkflags="-stdlib=libc++" release install
+$ ~/boost_1_79_0/tools/build/b2 --build-dir=./build --with-filesystem --with-program_options --with-system --with-thread --with-date_time toolset=clang-14 variant=release link=static runtime-link=static cxxflags="-std=c++20 -stdlib=libc++" linkflags="-stdlib=libc++" release
 ```
 
-### Сборка OpenCV
+#### Сборка OpenCV
 ```bash
 $ cd ~
 $ wget https://github.com/opencv/opencv/archive/4.5.5.zip
 $ unzip 4.5.5.zip
 $ cd opencv-4.5.5 && mkdir build && cd build
-$ cmake \
+$ ~/cmake-3.23.1/bin/cmake \
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_CXX_STANDARD=20 \
 -DBUILD_SHARED_LIBS=OFF \
@@ -123,26 +136,51 @@ $ cmake \
 $ make -j`nproc`
 ```
 
-### Сборка клиентских библиотек NVIDIA Triton™ Inference Server
+#### Сборка клиентских библиотек NVIDIA Triton™ Inference Server
 ```bash
 $ cd ~
 $ git clone https://github.com/triton-inference-server/client.git triton-client
 $ cd triton-client
 $ git checkout r22.04
 $ mkdir build && cd build
-$ cmake -DCMAKE_CXX_STANDARD=20 -DCMAKE_INSTALL_PREFIX=`pwd`/install -DCMAKE_BUILD_TYPE=Release -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_CC_GRPC=OFF -DTRITON_ENABLE_PERF_ANALYZER=OFF -DTRITON_ENABLE_PYTHON_HTTP=OFF -DTRITON_ENABLE_PYTHON_GRPC=OFF -DTRITON_ENABLE_GPU=OFF -DTRITON_ENABLE_EXAMPLES=OFF -DTRITON_ENABLE_TESTS=OFF -DTRITON_COMMON_REPO_TAG=r22.04 -DTRITON_THIRD_PARTY_REPO_TAG=r22.04 ..
+$ ~/cmake-3.23.1/bin/cmake \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_CXX_STANDARD=20 \
+-DCMAKE_INSTALL_PREFIX:PATH=$HOME/triton-client/build/install \
+-DTRITON_ENABLE_CC_HTTP=ON \
+-DTRITON_ENABLE_CC_GRPC=OFF \
+-DTRITON_ENABLE_PERF_ANALYZER=OFF \
+-DTRITON_ENABLE_PYTHON_HTTP=OFF \
+-DTRITON_ENABLE_PYTHON_GRPC=OFF \
+-DTRITON_ENABLE_GPU=OFF \
+-DTRITON_ENABLE_EXAMPLES=OFF \
+-DTRITON_ENABLE_TESTS=OFF \
+-DTRITON_COMMON_REPO_TAG=r22.04 \
+-DTRITON_THIRD_PARTY_REPO_TAG=r22.04 \
+..
 $ make cc-clients -j`nproc`
 ```
 
-## Сборка FRS
+### Сборка FRS
 ```bash
 $ cd ~
 $ git clone --recurse-submodules https://github.com/rosteleset/frs.git
 $ cd frs && mkdir build && cd build
-$ cmake -DCMAKE_BUILD_TYPE=Release -DOpenCV_DIR:PATH=$HOME/opencv-4.5.5/build -DTRITON_CLIENT_DIR:PATH=$HOME/triton-client/build/install -DCURL_ZLIB=OFF -DBoost_USE_STATIC_RUNTIME=ON ..
+$ ~/cmake-3.23.1/bin/cmake \
+-DCMAKE_BUILD_TYPE=Release \
+-DBoost_USE_RELEASE_LIBS=ON \
+-DBoost_USE_STATIC_LIBS=ON \
+-DBoost_USE_STATIC_RUNTIME=ON \
+-DBoost_NO_SYSTEM_PATHS=ON \
+-DBOOST_INCLUDEDIR:PATH=$HOME/boost_1_79_0 \
+-DBOOST_LIBRARYDIR:PATH=$HOME/boost_1_79_0/stage/lib \
+-DOpenCV_DIR:PATH=$HOME/opencv-4.5.5/build \
+-DTRITON_CLIENT_DIR:PATH=$HOME/triton-client/build/install \
+-DCURL_ZLIB=OFF \
+..
 $ make -j`nproc`
 ```
-**Примечание.** Возможна ситуация, что в системе установлен пакет OpenSSL версии 3 или выше (например, Ubuntu 22.04) и во время сборки появляется ошибка вида "OpenSSL version 1.x is required but version Y was found". В этом случае необходимо в файле *~/frs/contrib/mysql-connector-cpp/cdk/cmake/DepFindSSL.cmake* закомментировать строчки с проверкой версии OpenSLL :
+**Примечание.** Возможна ситуация, что в системе установлен пакет OpenSSL версии 3 или выше (например, Ubuntu 22.04) и во время сборки появляется ошибка вида "OpenSSL version 1.x is required but version Y was found". В этом случае необходимо в файле *~/frs/contrib/mysql-connector-cpp/cdk/cmake/DepFindSSL.cmake* закомментировать строчки с проверкой версии OpenSSL :
 ```
 #  if(NOT OPENSSL_VERSION_MAJOR EQUAL 1)
 #    message(SEND_ERROR "OpenSSL version 1.x is required but version ${OPENSSL_VERSION} was found")
@@ -161,7 +199,7 @@ $ sudo chown $USER:$USER /opt/frs -R
 $ cp ~/frs/build/frs /opt/frs
 ```
 
-## Установка MySQL сервера
+### Установка MySQL сервера
 В качестве рабочей базы данных FRS использует MySQL.
 ```bash
 $ sudo apt install mysql-server
@@ -188,7 +226,7 @@ $ mysql -p -u user_frs db_frs < ~/frs/mysql/01_structure.sql
 $ mysql -p -u user_frs db_frs < ~/frs/mysql/02_default_data.sql
 ```
 
-## NVIDIA Triton™ Inference Server
+### NVIDIA Triton™ Inference Server
 Для инференса нейронных сетей FRS использует Triton Inference Server (TIS) от компании NVIDIA. Существуют различные способы установки и применения TIS. В нашем случае мы используем контейнер. Команды для развертывания контейнера взяты [отсюда](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#getting-started).
 ```bash
 $ curl https://get.docker.com | sh \
@@ -200,7 +238,7 @@ $ sudo apt-get update
 $ sudo apt-get install -y nvidia-docker2
 $ sudo systemctl restart docker
 ```
-Для проверки, что CUDA контейнер работает, нужно запустить:
+Если используется GPU, то для проверки, что CUDA контейнер работает, нужно запустить:
 ```bash
 $ sudo docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 ```
@@ -208,14 +246,14 @@ $ sudo docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 ```bash
 $ sudo docker pull nvcr.io/nvidia/tritonserver:21.05-py3
 ```
-
-## Создание TensorRT планов моделей нейронных сетей
-В TIS для инференса мы используем TensorRT планы, полученные из моделей нейронных сетей в формате ONNX (Open Neural Network Exchange). На данный момент FRS использует в работе три модели:
+### Используемые модели нейронных сетей
+На данный момент FRS использует в работе три модели:
 - **scrfd** - предназначена для поиска лиц на изображении. [Ссылка](https://github.com/deepinsight/insightface/tree/master/detection/scrfd) на проект. Путь к файлу: */opt/frs/plan_source/scrfd/scrfd_10g_bnkps.onnx*
 - **genet** - предназначена для определения наличия на лице маски или тёмных очков. За основу взят [этот](https://github.com/idstcv/GPU-Efficient-Networks) проект. Модель получена путем "дообучения" (transfer learning with fine-tuning) на трех классах: открытое лицо, лицо в маске, лицо в тёмных очках. Путь к файлу: */opt/frs/plan_source/genet/genet_small_custom_ft.onnx*
 - **arcface** - предназначена для вычисления биометрического шаблона лица. [Ссылка](https://github.com/deepinsight/insightface/tree/master/recognition/arcface_torch) на проект.  Ссылка для скачивания на [файл](https://drive.google.com/file/d/1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP/view?usp=sharing) в формате ONNX.
 
-Для создания файлов с TensorRT планами будем использовать контейнер и утилиту **trtexec**:
+### Создание TensorRT планов моделей нейронных сетей (если используется GPU)
+В TIS для инференса мы используем TensorRT планы, полученные из моделей нейронных сетей в формате ONNX (Open Neural Network Exchange).  Для создания файлов с TensorRT планами будем использовать контейнер и утилиту **trtexec**:
 ```bash
 $ sudo docker pull nvcr.io/nvidia/tensorrt:21.05-py3
 $ sudo docker run --gpus all -it --rm -v/opt/frs:/frs nvcr.io/nvidia/tensorrt:21.05-py3
@@ -243,12 +281,22 @@ $ trtexec --onnx=/frs/plan_source/arcface/glint360k_r50.onnx --saveEngine=/frs/m
 sudo chown $USER:$USER /opt/frs/plan_source/arcface -R
 sudo chown $USER:$USER /opt/frs/model_repository -R
 ```
+### Конфигурация моделей для TIS без использования GPU
+В этом случае будем использовать конфигурацию в директории */opt/frs/model_repository_onnx*
+Нужно скопировать или переместить (как пожелаете) файлы:
+ - *scrfd_10g_bnkps.onnx* в директорию */opt/frs/model_repository_onnx/scrfd/1/* под именем *model.onnx*
+ - *genet_small_custom_ft.onnx* в директорию */opt/frs/model_repository_onnx/genet/1/* под именем *model.onnx*
+ - скачанный по ссылке выше файл *glint360k_r50.onnx* в директорию */opt/frs/model_repository_onnx/arcface/1/* под именем *model.onnx*
 
-## Запуск контейнера Triton Inference Server
+### Запуск контейнера Triton Inference Server с GPU
 ```bash
 $ sudo docker run --gpus all -d -p8000:8000 -p8001:8001 -p8002:8002 -v/opt/frs/model_repository:/models nvcr.io/nvidia/tritonserver:21.05-py3 sh -c "tritonserver --model-repository=/models"
 ```
-## Запуск FRS
+### Запуск контейнера Triton Inference Server без GPU
+```bash
+$ sudo docker run -d -p8000:8000 -p8001:8001 -p8002:8002 -v/opt/frs/model_repository_onnx:/models nvcr.io/nvidia/tritonserver:21.05-py3 sh -c "tritonserver --model-repository=/models"
+```
+### Запуск FRS
 Параметры конфигурации с описанием находятся в файле */opt/frs/sample.config*.
 Запуск:
 ```bash
@@ -263,12 +311,12 @@ $ ./create_apidoc
 $ ./create_apidoc_sg
 ```
 Файлы появятся в директориях *~/frs/www/apidoc* и *~/frs/www/apidoc_sg*. Если их поместить в директории */opt/frs/static/apidoc* и */opt/frs/static/apidoc_sg* соответственно, то документация будет доступна по URL:
-*http://localhost:9051/static/apidoc/*
-*http://localhost:9051/static/apidoc_sg/*
+*http://localhost:9051/static/apidoc/index.html*
+*http://localhost:9051/static/apidoc_sg/index.html*
 
 ## Советы по подбору GPU
 - **Память GPU**
-Чем больше памяти, тем больше моделей нейронных сетей могут быть использованы одновременно в TIS. Мы используем видеокарту с памятью 4 Гб .
+Чем больше памяти, тем больше моделей нейронных сетей могут быть использованы одновременно в TIS. На данный момент мы используем видеокарту GTX 1650  с памятью 4 Гб .
 - **GPU compute capability**
 [Compute capability](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability) определяет версию спецификации и указывает на вычислительные возможности GPU. Более подробную информацию можно посмотреть, например, в приведенной таблице [здесь](https://ru.wikipedia.org/wiki/CUDA).
 Когда TensorRT создает план инференса модели (model.plan), то, чем выше compute capability, тем больше типов слоев нейронной сети будут обрабатываться на GPU.

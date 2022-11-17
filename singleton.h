@@ -1,16 +1,16 @@
 #pragma once
 
 #include <chrono>
-#include <shared_mutex>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include <shared_mutex>
 
-#include "concurrencpp/concurrencpp.h"
-#include "mysqlx/xdevapi.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/time/time.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
+#include "concurrencpp/concurrencpp.h"
+#include "mysqlx/xdevapi.h"
 
 using time_point = std::chrono::time_point<std::chrono::steady_clock>;
 using WriteLocker = std::scoped_lock<std::shared_timed_mutex>;
@@ -30,8 +30,8 @@ typedef cv::Mat FaceDescriptor;
 
 struct ConfParam
 {
-  Variant value;  // значение параметра
-  String comments;  // описание параметра
+  Variant value;      // значение параметра
+  String comments;    // описание параметра
   Variant min_value;  // минимальное значение (если есть)
   Variant max_value;  // максимальное значение (если есть)
 };
@@ -63,7 +63,10 @@ struct TaskData
   bool is_base64{};  //признак того, что URL изображения закодировано base64
   int id_sgroup{};
 
-  TaskData(int id_vstream_, TaskType task_type_) : id_vstream(id_vstream_), task_type(task_type_) {}
+  TaskData(int id_vstream_, TaskType task_type_)
+    : id_vstream(id_vstream_), task_type(task_type_)
+  {
+  }
 };
 
 enum DeliveryEventType
@@ -104,19 +107,19 @@ struct TaskConfig
   HashMap<String, ConfParam> conf_params;  //общие конфигурационные параметры системы
 
   //явно указанные параметры видео потоков
-  HashMap<String, int> conf_vstream_ext_to_id_vstream;  //связка внешнего идентификатора видео потока с внутренним
-  HashMap<int, String> conf_id_vstream_to_vstream_ext;  //связка внутреннего идентификатора видео потока с внешним
-  HashMap<int, String> conf_vstream_url;  //URL скриншотов с камер
-  HashMap<int, String> conf_vstream_callback_url;  //URL для вызова при возникновении события распознавания лица
-  HashMap<int, cv::Rect> conf_vstream_region;  //связка камеры и области, в которой определяются лица
+  HashMap<String, int> conf_vstream_ext_to_id_vstream;           //связка внешнего идентификатора видео потока с внутренним
+  HashMap<int, String> conf_id_vstream_to_vstream_ext;           //связка внутреннего идентификатора видео потока с внешним
+  HashMap<int, String> conf_vstream_url;                         // URL скриншотов с камер
+  HashMap<int, String> conf_vstream_callback_url;                // URL для вызова при возникновении события распознавания лица
+  HashMap<int, cv::Rect> conf_vstream_region;                    //связка камеры и области, в которой определяются лица
   HashMap<int, HashMap<String, ConfParam>> vstream_conf_params;  //индивидуальные параметры для камер
 
   //параметры специальных групп
-  static const int SG_MIN_DESCRIPTOR_COUNT = 1;  //минимально допустимое значение для параметра MAX_DESCRIPTOR_COUNT в API методах
+  static const int SG_MIN_DESCRIPTOR_COUNT = 1;             //минимально допустимое значение для параметра MAX_DESCRIPTOR_COUNT в API методах
   static const int DEFAULT_SG_MAX_DESCRIPTOR_COUNT = 1000;  //максимальное количество дескрипторов по-умолчанию в специальной группе
-  HashMap<String, int> conf_token_to_sgroup;  //связка токена и идентификатора специальной группы
-  HashMap<int, String> conf_sgroup_callback_url;  //URL для вызова при возникновении события распознавания лица в специальной группе
-  HashMap<int, int> conf_sgroup_max_descriptor_count;  //максимальное количество дескрипторов в специальной группе
+  HashMap<String, int> conf_token_to_sgroup;                //связка токена и идентификатора специальной группы
+  HashMap<int, String> conf_sgroup_callback_url;            // URL для вызова при возникновении события распознавания лица в специальной группе
+  HashMap<int, int> conf_sgroup_max_descriptor_count;       //максимальное количество дескрипторов в специальной группе
 };
 
 //для сбора статистики инференса
@@ -128,42 +131,42 @@ struct DNNStatsData
 };
 
 //Константы с названием параметров конфигурации
-const constexpr char* CONF_FILE = "file";  // = ".config";
-const constexpr char* CONF_LOGS_LEVEL = "logs-level";  // = 2;  //уровень логов: 0 - ошибки; 1 - события; 2 - подробно
-const constexpr char* CONF_FACE_CONFIDENCE_THRESHOLD = "face-confidence";  // = 0.8;  //порог вероятности определения лица
-const constexpr char* CONF_FACE_CLASS_CONFIDENCE_THRESHOLD = "face-class-confidence";  // = 0.7;  //порог вероятности определения макси или темных очков на лице
-const constexpr char* CONF_LAPLACIAN_THRESHOLD = "blur";  // = 50.0;  //нижний порог для проверки на размытость изображения (через дискретный аналог оператора Лапласа)
-const constexpr char* CONF_LAPLACIAN_THRESHOLD_MAX = "blur-max";  // = 15000.0;  //верхний порог для проверки на размытость изображения (через дискретный аналог оператора Лапласа)
-const constexpr char* CONF_TOLERANCE = "tolerance";  // = 0.7;  //толерантность - параметр, определяющий, что два вектора-дескриптора лица принадлежат одному человеку
-const constexpr char* CONF_MAX_CAPTURE_ERROR_COUNT = "max-capture-error-count"; // = 3;  // Максимальное количество подряд полученных ошибок при получении кадра с камеры, после которого будет считаться попытка получения кадра неудачной
-const constexpr char* CONF_RETRY_PAUSE = "retry-pause";  // = 30;  //пазуа в секундах перед следующей попыткой установки связи с видео потоком
-const constexpr char* CONF_FACE_ENLARGE_SCALE = "face-enlarge-scale";  // = 1.4; //коэффициент расширения прямоугольной области лица для хранения
-const constexpr char* CONF_ALPHA = "alpha";  // = 1.0;  //альфа-коррекция
-const constexpr char* CONF_BETA = "beta";  // = 0;  //бета-коррекция
-const constexpr char* CONF_GAMMA = "gamma";  // = 1.0;  //гамма-коррекция
-const constexpr char* CONF_CALLBACK_TIMEOUT = "callback-timeout"; // = 2.0;  //время ожидания ответа при вызове callback URL в секундах
-const constexpr char* CONF_CAPTURE_TIMEOUT = "capture-timeout"; // = 1.0;  //время ожидания захвата кадра с камеры в секундах
-const constexpr char* CONF_MARGIN = "margin";  // = 5.0;  //отступ в процентах от краев кадра для уменьшения рабочей области
+const constexpr char* CONF_FILE = "file";                                                  // = ".config";
+const constexpr char* CONF_LOGS_LEVEL = "logs-level";                                      // = 2;  //уровень логов: 0 - ошибки; 1 - события; 2 - подробно
+const constexpr char* CONF_FACE_CONFIDENCE_THRESHOLD = "face-confidence";                  // = 0.8;  //порог вероятности определения лица
+const constexpr char* CONF_FACE_CLASS_CONFIDENCE_THRESHOLD = "face-class-confidence";      // = 0.7;  //порог вероятности определения макси или темных очков на лице
+const constexpr char* CONF_LAPLACIAN_THRESHOLD = "blur";                                   // = 50.0;  //нижний порог для проверки на размытость изображения (через дискретный аналог оператора Лапласа)
+const constexpr char* CONF_LAPLACIAN_THRESHOLD_MAX = "blur-max";                           // = 15000.0;  //верхний порог для проверки на размытость изображения (через дискретный аналог оператора Лапласа)
+const constexpr char* CONF_TOLERANCE = "tolerance";                                        // = 0.7;  //толерантность - параметр, определяющий, что два вектора-дескриптора лица принадлежат одному человеку
+const constexpr char* CONF_MAX_CAPTURE_ERROR_COUNT = "max-capture-error-count";            // = 3;  // Максимальное количество подряд полученных ошибок при получении кадра с камеры, после которого будет считаться попытка получения кадра неудачной
+const constexpr char* CONF_RETRY_PAUSE = "retry-pause";                                    // = 30;  //пауза в секундах перед следующей попыткой установки связи с видео потоком
+const constexpr char* CONF_FACE_ENLARGE_SCALE = "face-enlarge-scale";                      // = 1.4; //коэффициент расширения прямоугольной области лица для хранения
+const constexpr char* CONF_ALPHA = "alpha";                                                // = 1.0;  //альфа-коррекция
+const constexpr char* CONF_BETA = "beta";                                                  // = 0;  //бета-коррекция
+const constexpr char* CONF_GAMMA = "gamma";                                                // = 1.0;  //гамма-коррекция
+const constexpr char* CONF_CALLBACK_TIMEOUT = "callback-timeout";                          // = 2.0;  //время ожидания ответа при вызове callback URL в секундах
+const constexpr char* CONF_CAPTURE_TIMEOUT = "capture-timeout";                            // = 1.0;  //время ожидания захвата кадра с камеры в секундах
+const constexpr char* CONF_MARGIN = "margin";                                              // = 5.0;  //отступ в процентах от краев кадра для уменьшения рабочей области
 const constexpr char* CONF_DESCRIPTOR_INACTIVITY_PERIOD = "descriptor-inactivity-period";  // = 400;  //период неактивности дескриптора в днях, спустя который он удаляется
 const constexpr char* CONF_BEST_QUALITY_INTERVAL_BEFORE = "best-quality-interval-before";  // = 5.0;  //период в секундах до временной точки для поиска лучшего кадра
-const constexpr char* CONF_BEST_QUALITY_INTERVAL_AFTER = "best-quality-interval-after";  // = 2.0;  //период в секундах после временной точки для поиска лучшего кадра
+const constexpr char* CONF_BEST_QUALITY_INTERVAL_AFTER = "best-quality-interval-after";    // = 2.0;  //период в секундах после временной точки для поиска лучшего кадра
 const constexpr char* TYPE_BOOL = "bool";
 const constexpr char* TYPE_INT = "int";
 const constexpr char* TYPE_DOUBLE = "double";
 const constexpr char* TYPE_STRING = "string";
 
 //для детекции движения
-const constexpr char* CONF_PROCESS_FRAMES_INTERVAL = "process-frames-interval";  // = 1.0  // интервал в секундах, втечение которого обрабатываются кадры после окончания детекции движения
-const constexpr char* CONF_DELAY_BETWEEN_FRAMES = "delay-between-frames";  // = 1.0  // интервал в секундах между захватами кадров после детекции движения
-const constexpr char* CONF_OPEN_DOOR_DURATION = "open-door-duration";   // = 5.0  // время открытия двери в секундах
+const constexpr char* CONF_PROCESS_FRAMES_INTERVAL = "process-frames-interval";  // = 1.0  // интервал в секундах, в течение которого обрабатываются кадры после окончания детекции движения
+const constexpr char* CONF_DELAY_BETWEEN_FRAMES = "delay-between-frames";        // = 1.0  // интервал в секундах между захватами кадров после детекции движения
+const constexpr char* CONF_OPEN_DOOR_DURATION = "open-door-duration";            // = 5.0  // время открытия двери в секундах
 
 //пороговые значения параметров roll, yaw, pitch, которые задают интервал в градусах, для определения фронтальности лица
-const constexpr char* CONF_ROLL_THRESHOLD = "roll-threshold";  // = 45.0;  //интервал (-conf-roll_threshold; +conf_roll_threshold)
-const constexpr char* CONF_YAW_THRESHOLD = "yaw-threshold";  // = 15.0;  //интервал (-conf-yaw_threshold; +conf_yaw_threshold)
+const constexpr char* CONF_ROLL_THRESHOLD = "roll-threshold";    // = 45.0;  //интервал (-conf-roll_threshold; +conf_roll_threshold)
+const constexpr char* CONF_YAW_THRESHOLD = "yaw-threshold";      // = 15.0;  //интервал (-conf-yaw_threshold; +conf_yaw_threshold)
 const constexpr char* CONF_PITCH_THRESHOLD = "pitch-threshold";  // = 30.0;  //интервал (-conf-pitch_threshold; +conf_pitch_threshold)
 
 //для периодического удаления устаревших логов из таблицы log_faces
-const constexpr char* CONF_CLEAR_OLD_LOG_FACES = "clear-old-log-faces";  // = 8.0;  //период запуска очистки устаревших логов из таблицы log_faces
+const constexpr char* CONF_CLEAR_OLD_LOG_FACES = "clear-old-log-faces";          // = 8.0;  //период запуска очистки устаревших логов из таблицы log_faces
 const constexpr char* CONF_LOG_FACES_LIVE_INTERVAL = "log-faces-live-interval";  // = 24.0;  //"время жизни" логов из таблицы log_faces
 
 //для комментариев API методов
@@ -179,29 +182,29 @@ const constexpr char* CONF_COMMENTS_INFERENCE_ERROR = "comments-inference-error"
 const constexpr char* CONF_COMMENTS_URL_IMAGE_ERROR = "comments-url-image-error";
 
 //для инференса детекции лиц
-const constexpr char* CONF_DNN_FD_INFERENCE_SERVER = "dnn-fd-inference-server";  //сервер
-const constexpr char* CONF_DNN_FD_MODEL_NAME = "dnn-fd-model-name";  //название модели нейронной сети
+const constexpr char* CONF_DNN_FD_INFERENCE_SERVER = "dnn-fd-inference-server";    //сервер
+const constexpr char* CONF_DNN_FD_MODEL_NAME = "dnn-fd-model-name";                //название модели нейронной сети
 const constexpr char* CONF_DNN_FD_INPUT_TENSOR_NAME = "dnn-fd-input-tensor-name";  //название входного тензора
-const constexpr char* CONF_DNN_FD_INPUT_WIDTH = "dnn-fd-input-width";  //ширина изображения
-const constexpr char* CONF_DNN_FD_INPUT_HEIGHT = "dnn-fd-input-height";  //высота изображения
+const constexpr char* CONF_DNN_FD_INPUT_WIDTH = "dnn-fd-input-width";              //ширина изображения
+const constexpr char* CONF_DNN_FD_INPUT_HEIGHT = "dnn-fd-input-height";            //высота изображения
 
 //для инференса получения класса лица (нормальное, в маске, без маски)
-const constexpr char* CONF_DNN_FC_INFERENCE_SERVER = "dnn-fc-inference-server";  //сервер
-const constexpr char* CONF_DNN_FC_MODEL_NAME = "dnn-fc-model-name";  //название модели нейронной сети
-const constexpr char* CONF_DNN_FC_INPUT_TENSOR_NAME = "dnn-fc-input-tensor-name";  //название входного тензора
-const constexpr char* CONF_DNN_FC_INPUT_WIDTH = "dnn-fc-input-width";  //ширина изображения
-const constexpr char* CONF_DNN_FC_INPUT_HEIGHT = "dnn-fc-input-height";  //высота изображения
+const constexpr char* CONF_DNN_FC_INFERENCE_SERVER = "dnn-fc-inference-server";      //сервер
+const constexpr char* CONF_DNN_FC_MODEL_NAME = "dnn-fc-model-name";                  //название модели нейронной сети
+const constexpr char* CONF_DNN_FC_INPUT_TENSOR_NAME = "dnn-fc-input-tensor-name";    //название входного тензора
+const constexpr char* CONF_DNN_FC_INPUT_WIDTH = "dnn-fc-input-width";                //ширина изображения
+const constexpr char* CONF_DNN_FC_INPUT_HEIGHT = "dnn-fc-input-height";              //высота изображения
 const constexpr char* CONF_DNN_FC_OUTPUT_TENSOR_NAME = "dnn-fc-output-tensor-name";  //название выходного тензора
-const constexpr char* CONF_DNN_FC_OUTPUT_SIZE = "dnn-fc-output-size";  //размер массива результата инференса
+const constexpr char* CONF_DNN_FC_OUTPUT_SIZE = "dnn-fc-output-size";                //размер массива результата инференса
 
 //для инференса получения дескриптора лица
-const constexpr char* CONF_DNN_FR_INFERENCE_SERVER = "dnn-fr-inference-server";  //сервер
-const constexpr char* CONF_DNN_FR_MODEL_NAME = "dnn-fr-model-name";  //название модели нейронной сети
-const constexpr char* CONF_DNN_FR_INPUT_TENSOR_NAME = "dnn-fr-input-tensor-name";  //название входного тензора
-const constexpr char* CONF_DNN_FR_INPUT_WIDTH = "dnn-fr-input-width";  //ширина изображения
-const constexpr char* CONF_DNN_FR_INPUT_HEIGHT = "dnn-fr-input-height";  //высота изображения
+const constexpr char* CONF_DNN_FR_INFERENCE_SERVER = "dnn-fr-inference-server";      //сервер
+const constexpr char* CONF_DNN_FR_MODEL_NAME = "dnn-fr-model-name";                  //название модели нейронной сети
+const constexpr char* CONF_DNN_FR_INPUT_TENSOR_NAME = "dnn-fr-input-tensor-name";    //название входного тензора
+const constexpr char* CONF_DNN_FR_INPUT_WIDTH = "dnn-fr-input-width";                //ширина изображения
+const constexpr char* CONF_DNN_FR_INPUT_HEIGHT = "dnn-fr-input-height";              //высота изображения
 const constexpr char* CONF_DNN_FR_OUTPUT_TENSOR_NAME = "dnn-fr-output-tensor-name";  //название выходного тензора
-const constexpr char* CONF_DNN_FR_OUTPUT_SIZE = "dnn-fr-output-size";  //размер массива результата инференса
+const constexpr char* CONF_DNN_FR_OUTPUT_SIZE = "dnn-fr-output-size";                //размер массива результата инференса
 
 //для копирования данных событий
 const constexpr char* CONF_COPY_EVENT_DATA = "flag-copy-event-data";  //флаг копирования данных события в отдельную директорию
@@ -210,19 +213,8 @@ const constexpr char* CONF_COPY_EVENT_DATA = "flag-copy-event-data";  //флаг
 inline constexpr absl::string_view ERROR_SQL_EXEC = "Ошибка: не удалось выполнить запрос $0.";
 inline constexpr absl::string_view ERROR_SQL_EXEC_IN_FUNCTION = "Ошибка: не удалось выполнить запрос $0 в функции $1.";
 
-//SQL запросы
+// SQL запросы
 const constexpr char* SQL_GET_COMMON_SETTINGS = "select *, unix_timestamp(time_point) unix_time_point from common_settings";
-
-/*const constexpr char* SQL_UPDATE_COMMON_SETTINGS = R"_SQL_(
-  update
-    common_settings cs
-  set
-    cs.param_value = ?,
-    cs.time_point = from_unixtime(?)
-  where
-    cs.param_name = ?
-)_SQL_";*/
-
 const constexpr char* SQL_GET_VIDEO_STREAMS = R"_SQL_(
   select
     vs.*
@@ -234,7 +226,6 @@ const constexpr char* SQL_GET_VIDEO_STREAMS = R"_SQL_(
 )_SQL_";
 
 const constexpr char* SQL_GET_VIDEO_STREAM_BY_EXT = "select * from video_streams where vstream_ext = ?";
-
 const constexpr char* SQL_GET_VIDEO_STREAM_SETTINGS = R"_SQL_(
   select
     vss.*
@@ -292,13 +283,6 @@ const constexpr char* SQL_UPDATE_VSTREAM = R"_SQL_(
     vs.id_vstream = ?
  )_SQL_";
 
-/*const constexpr char* SQL_REMOVE_VSTREAM = R"_SQL_(
-  delete from
-    video_streams vs
-  where
-    vs.id_vstream = ?
-)_SQL_";*/
-
 const constexpr char* SQL_GET_FACE_DESCRIPTORS = R"_SQL_(
   select distinct
     fd.*
@@ -330,17 +314,7 @@ const constexpr char* SQL_ADD_FACE_DESCRIPTOR = R"_SQL_(
     descriptor_data = ?
   )_SQL_";
 
-/*const constexpr char* SQL_UPDATE_FACE_DESCRIPTOR = R"_SQL_(
-  update
-    face_descriptors
-  set
-    date_last = current_stamp
-  where
-    id_descriptor = ?
-)_SQL_";*/
-
 const constexpr char* SQL_REMOVE_FACE_DESCRIPTOR = "delete from face_descriptors fd where fd.id_descriptor = ?";
-
 const constexpr char* SQL_ADD_DESCRIPTOR_IMAGE = R"_SQL_(
   insert into
     descriptor_images
@@ -504,7 +478,6 @@ const constexpr char* SQL_GET_SPECIAL_GROUPS = "select * from special_groups";
 const constexpr char* SQL_GET_SGROUP_BY_ID = "select * from special_groups where id_special_group = ?";
 const constexpr char* SQL_GET_SGROUP_BY_NAME = "select id_special_group from special_groups where group_name = ?";
 const constexpr char* SQL_GET_LINKS_DESCRIPTOR_SGROUP = "select * from link_descriptor_sgroup";
-
 const constexpr char* SQL_ADD_SPECIAL_GROUP = R"_SQL_(
   insert into
     special_groups
@@ -518,7 +491,6 @@ const constexpr char* SQL_UPDATE_SPECIAL_GROUP = "update special_groups set grou
 const constexpr char* SQL_DELETE_SPECIAL_GROUP = "delete from special_groups where id_special_group = ?";
 const constexpr char* SQL_UPDATE_SGROUP_CALLBACK = "update special_groups set callback_url = ? where id_special_group = ?";
 const constexpr char* SQL_UPDATE_SGROUP_TOKEN = "update special_groups set sg_api_token = ? where id_special_group = ?";
-
 const constexpr char* SQL_ADD_LINK_DESCRIPTOR_SGROUP =
   "insert ignore link_descriptor_sgroup set id_descriptor = ?, id_sgroup = ?";
 
@@ -555,7 +527,7 @@ class Singleton
 {
 public:
   Singleton(Singleton const&) = delete;
-  Singleton& operator= (Singleton const&) = delete;
+  Singleton& operator=(Singleton const&) = delete;
   static Singleton& instance()
   {
     static Singleton s;
@@ -563,7 +535,6 @@ public:
   }
 
   std::unique_ptr<mysqlx::Client> sql_client;
-
   std::unique_ptr<concurrencpp::runtime> runtime;
 
   size_t descriptor_size = 512;
@@ -571,12 +542,11 @@ public:
   size_t face_height = 112;
 
   std::atomic_bool is_working = true;
-
   std::shared_timed_mutex mtx_task_config;
   TaskConfig task_config;
 
   //люди и их данные
-  HashMap<int, FaceDescriptor> id_descriptor_to_data;  //связка идентификатора дескриптора и его вектора
+  HashMap<int, FaceDescriptor> id_descriptor_to_data;       //связка идентификатора дескриптора и его вектора
   HashMap<int, HashSet<int>> id_vstream_to_id_descriptors;  //связка идентификатора видео потока и дескрипторов
   HashMap<int, HashSet<int>> id_descriptor_to_id_vstreams;  //связка идентификатора дескриптора и видео потоков
 
@@ -599,17 +569,17 @@ public:
   std::mutex mtx_capture;
   HashSet<int> is_capturing;
   HashMap<int, time_point> id_vstream_to_start_motion;  //время последней детекции начала движения
-  HashMap<int, time_point> id_vstream_to_end_motion;  //время последней детекции окончания движения
-  HashSet<int> is_door_open;  //информация об открытой двери
-  String working_path = "./";  //рабочая директория
+  HashMap<int, time_point> id_vstream_to_end_motion;    //время последней детекции окончания движения
+  HashSet<int> is_door_open;                            //информация об открытой двери
+  String working_path = "./";                           //рабочая директория
 
   //для сбора статистики инференса
-  std::mutex mtx_stats;
+  std::shared_timed_mutex mtx_stats;
   HashMap<int, DNNStatsData> dnn_stats_data;
 
   //методы
   void addLog(const String& msg) const;
-  void loadData();  //загрузка данных
+  void loadData();                                                                        //загрузка данных
   int addFaceDescriptor(int id_vstream, const FaceDescriptor& fd, const cv::Mat& f_img);  //добавление нового дескриптора лица
   std::tuple<int, String, String> addLogFace(int id_vstream, DateTime log_date, int id_descriptor, double quality,
     const cv::Rect& face_rect, const std::string& screenshot) const;

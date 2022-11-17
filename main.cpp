@@ -1,5 +1,5 @@
-#include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 #include "frs_api.h"
 #include "singleton.h"
@@ -73,7 +73,7 @@ bool checkConfig(HashMap<String, String>& config)
 
         if (!is_ok_range)
         {
-          cerr << absl::Substitute("Значение параметра $0 (указано \"$1\") должно быть $2.\n", k,  it->second, s_range);
+          cerr << absl::Substitute("Значение параметра $0 (указано \"$1\") должно быть $2.\n", k, it->second, s_range);
           is_config_ok = false;
         }
       }
@@ -96,6 +96,7 @@ int main(int argc, char** argv)
 {
   Singleton& singleton = Singleton::instance();
 
+  // clang-format off
   //конфигурационные параметры со значениями по-умолчанию
   singleton.task_config.conf_params = {
       {CONF_FILE, {".config", "Файл с конфигурацией"}}
@@ -122,7 +123,7 @@ int main(int argc, char** argv)
     , {CONF_BEST_QUALITY_INTERVAL_AFTER, {2.0, "Период в секундах после временной точки для поиска лучшего кадра", 0.5, 10.0}}
 
     //для детекции движения
-    , {CONF_PROCESS_FRAMES_INTERVAL, {1.0, "Интервал в секундах, втечение которого обрабатываются кадры после окончания детекции движения", 0.0, 30.0}}
+    , {CONF_PROCESS_FRAMES_INTERVAL, {1.0, "Интервал в секундах, в течение которого обрабатываются кадры после окончания детекции движения", 0.0, 30.0}}
     , {CONF_DELAY_BETWEEN_FRAMES, {1.0, "Интервал в секундах между захватами кадров после детекции движения", 0.3, 5.0}}
     , {CONF_OPEN_DOOR_DURATION, {5.0, "Время открытия двери в секундах", 1.0, 30.0}}
 
@@ -168,12 +169,13 @@ int main(int argc, char** argv)
     //для копирования данных события в отдельную директорию
     , {CONF_COPY_EVENT_DATA, {false}}
   };
+  // clang-format-on
 
   vector<String> args;
   for (int i = 0; i < argc; ++i)
   {
     args.emplace_back(argv[i]);
-    if (String(argv[i]) == "--frs-config" && i < argc - 1)
+    if (i < argc - 1 && String(argv[i]) == "--frs-config")
       singleton.task_config.conf_params[CONF_FILE].value = argv[i + 1];
   }
 
@@ -443,16 +445,16 @@ int main(int argc, char** argv)
     });
 
   CROW_ROUTE(api_service,  "/api/<path>").methods(crow::HTTPMethod::Post)(
-    [](const crow::request& request, crow::response& response, const std::string& api_method)
+    [&api_service](const crow::request& request, crow::response& response, const std::string& api_method)
     {
-      ApiService::handleRequest(request, response, api_method);
+      api_service.handleRequest(request, response, api_method);
       response.end();
     });
 
   CROW_ROUTE(api_service,  "/sgapi/<path>").methods(crow::HTTPMethod::Post)(
-    [](const crow::request& request, crow::response& response, const std::string& api_method_sgroup)
+    [&api_service](const crow::request& request, crow::response& response, const std::string& api_method_sgroup)
     {
-      ApiService::handleSGroupRequest(request, response, api_method_sgroup);
+      api_service.handleSGroupRequest(request, response, api_method_sgroup);
       response.end();
     });
 

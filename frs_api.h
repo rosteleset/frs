@@ -74,12 +74,12 @@
  *   "tolerance",
  *   "yaw-threshold"} params.paramName название параметра
  * @apiParam {Any} params.paramValue значение параметра, тип зависит от названия параметра
- * 
+ *
  * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
  *   "url": "http://host/getImage",
- *   "callback": "https://host/faceRecognized"
+ *   "callback": "https://host/faceRecognized",
  *   "params": [
  *       {"paramName": "tolerance", "paramValue": 0.75},
  *       {"paramName": "face-enlarge-scale", "paramValue": 1.4}
@@ -203,8 +203,8 @@
  * @apiParam {String} [streamId] идентификатор видео потока (обязательный, если не указан eventId)
  * @apiParam {String="yyyy-MM-dd hh:mm:ss"} [date] дата события (обязательный, если указан streamId)
  * @apiParam {Number} [eventId] идентификатор события из журнала FRS (обязательный, если не указан streamId); если указан, то остальные параметры игнорируются
- * @apiParam {String} [uuid] uuid события хоста
- * 
+ * @apiParam {String} [uuid] uuid события хоста или URL, по которому будет доступен кадр события
+ *
  * @apiParamExample {json} Пример использования
  * {
  *   "eventId": 12345
@@ -350,7 +350,7 @@
  *
  * @apiParam {String} streamId идентификатор видео потока
  * @apiParam {Number[]} faces массив faceId (идентификаторов дескрипторов)
- * 
+ *
  * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
@@ -376,7 +376,7 @@
  *
  * @apiParam {String} streamId идентификатор видео потока
  * @apiParam {Number[]} faces массив faceId (идентификаторов дескрипторов)
- * 
+ *
  * @apiParamExample {json} Пример использования
  * {
  *   "streamId": "1234",
@@ -884,27 +884,6 @@ namespace API
   constexpr const int CODE_FORBIDDEN = 403;
   constexpr const int CODE_SERVER_ERROR = 500;
 
-  //результат выполнения операции
-  const HashMap<int, const char*> RESPONSE_RESULT =
-  {
-      {CODE_SUCCESS, "OK"}
-    , {CODE_NO_CONTENT, "No Content"}
-    , {CODE_ERROR, "Bad Request"}
-    , {CODE_UNAUTHORIZED, "Unauthorized"}
-    , {CODE_FORBIDDEN, "Forbidden"}
-    , {CODE_SERVER_ERROR, "Internal Server Error"}
-  };
-
-  const HashMap<int, const char*> RESPONSE_MESSAGE =
-  {
-      {CODE_SUCCESS, MSG_DONE}
-    , {CODE_NO_CONTENT, "нет содержимого"}
-    , {CODE_ERROR, "некорректный запрос"}
-    , {CODE_UNAUTHORIZED, "не авторизован"}
-    , {CODE_FORBIDDEN, "запрещено"}
-    , {CODE_SERVER_ERROR, MSG_SERVER_ERROR}
-  };
-
   inline constexpr absl::string_view DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S";
   inline constexpr absl::string_view DATETIME_FORMAT_LOG_FACES = "%Y-%m-%d %H:%M:%E3S";
   inline constexpr absl::string_view DATE_FORMAT = "%Y-%m-%d";
@@ -919,37 +898,37 @@ namespace API
   inline constexpr absl::string_view ERROR_SGROUP_MAX_DESCRIPTOR_COUNT_LIMIT = "Достигнуто максимально допустимое количество зарегистрированных дескрипторов: $0.";
 
   //запросы
-  inline constexpr absl::string_view ADD_STREAM = "addStream";  //добавить или изменить видео поток
-  inline constexpr absl::string_view MOTION_DETECTION = "motionDetection";  //информация о детекции движения
-  inline constexpr absl::string_view DOOR_IS_OPEN = "doorIsOpen";  //уведомление об открытии двери домофона
-  inline constexpr absl::string_view BEST_QUALITY = "bestQuality";  //получить информацию о кадре с "лучшим" лицом
-  inline constexpr absl::string_view REGISTER_FACE = "registerFace";  //зарегистрировать лицо
-  inline constexpr absl::string_view ADD_FACES = "addFaces";  //привязать дескрипторы к видео потоку
-  inline constexpr absl::string_view REMOVE_FACES = "removeFaces";  //отвязать дескрипторы от видео потока
-  inline constexpr absl::string_view LIST_STREAMS = "listStreams";  //список обрабатываемых видео потоков и дескрипторов
-  inline constexpr absl::string_view REMOVE_STREAM = "removeStream";  //убрать видео поток
-  inline constexpr absl::string_view LIST_ALL_FACES = "listAllFaces";  //список всех дескрипторов
-  inline constexpr absl::string_view DELETE_FACES = "deleteFaces";  //удалить список дескрипторов из базы (в независимости от привязок к видео потокам)
-  inline constexpr absl::string_view GET_EVENTS = "getEvents";  //получить список событий из временного интервала
-  inline constexpr absl::string_view GET_SETTINGS = "getSettings";  //получить значения параметров
-  inline constexpr absl::string_view SET_SETTINGS = "setSettings";  //установить значения параметров
-  inline constexpr absl::string_view ADD_SPECIAL_GROUP = "addSpecialGroup";  //добавить специальную группу
+  inline constexpr absl::string_view ADD_STREAM = "addStream";                     //добавить или изменить видео поток
+  inline constexpr absl::string_view MOTION_DETECTION = "motionDetection";         //информация о детекции движения
+  inline constexpr absl::string_view DOOR_IS_OPEN = "doorIsOpen";                  //уведомление об открытии двери домофона
+  inline constexpr absl::string_view BEST_QUALITY = "bestQuality";                 //получить информацию о кадре с "лучшим" лицом
+  inline constexpr absl::string_view REGISTER_FACE = "registerFace";               //зарегистрировать лицо
+  inline constexpr absl::string_view ADD_FACES = "addFaces";                       //привязать дескрипторы к видео потоку
+  inline constexpr absl::string_view REMOVE_FACES = "removeFaces";                 //отвязать дескрипторы от видео потока
+  inline constexpr absl::string_view LIST_STREAMS = "listStreams";                 //список обрабатываемых видео потоков и дескрипторов
+  inline constexpr absl::string_view REMOVE_STREAM = "removeStream";               //убрать видео поток
+  inline constexpr absl::string_view LIST_ALL_FACES = "listAllFaces";              //список всех дескрипторов
+  inline constexpr absl::string_view DELETE_FACES = "deleteFaces";                 //удалить список дескрипторов из базы (в независимости от привязок к видео потокам)
+  inline constexpr absl::string_view GET_EVENTS = "getEvents";                     //получить список событий из временного интервала
+  inline constexpr absl::string_view GET_SETTINGS = "getSettings";                 //получить значения параметров
+  inline constexpr absl::string_view SET_SETTINGS = "setSettings";                 //установить значения параметров
+  inline constexpr absl::string_view ADD_SPECIAL_GROUP = "addSpecialGroup";        //добавить специальную группу
   inline constexpr absl::string_view UPDATE_SPECIAL_GROUP = "updateSpecialGroup";  //обновить специальную группу
   inline constexpr absl::string_view DELETE_SPECIAL_GROUP = "deleteSpecialGroup";  //удалить специальную группу
-  inline constexpr absl::string_view PROCESS_FRAME = "processFrame";  //обработать кадр по url
-  inline constexpr absl::string_view SAVE_DNN_STATS_DATA = "saveDnnStatsData";  //сохранить данные статистики инференса
-  inline constexpr absl::string_view SG_REGISTER_FACE = "sgRegisterFace";  //зарегистрировать лицо в специальной группе
-  inline constexpr absl::string_view SG_DELETE_FACES = "sgDeleteFaces";  //удалить список дескрипторов специальной группы из базы
-  inline constexpr absl::string_view SG_LIST_FACES = "sgListFaces";  //получить список всех дескрипторов специальной группы
-  inline constexpr absl::string_view SG_UPDATE_GROUP = "sgUpdateGroup";  //обновить параметры специальной группы
-  inline constexpr absl::string_view SG_RENEW_TOKEN = "sgRenewToken";  //обновить токен авторизации специальной группы
+  inline constexpr absl::string_view PROCESS_FRAME = "processFrame";               //обработать кадр по url
+  inline constexpr absl::string_view SAVE_DNN_STATS_DATA = "saveDnnStatsData";     //сохранить данные статистики инференса
+  inline constexpr absl::string_view SG_REGISTER_FACE = "sgRegisterFace";          //зарегистрировать лицо в специальной группе
+  inline constexpr absl::string_view SG_DELETE_FACES = "sgDeleteFaces";            //удалить список дескрипторов специальной группы из базы
+  inline constexpr absl::string_view SG_LIST_FACES = "sgListFaces";                //получить список всех дескрипторов специальной группы
+  inline constexpr absl::string_view SG_UPDATE_GROUP = "sgUpdateGroup";            //обновить параметры специальной группы
+  inline constexpr absl::string_view SG_RENEW_TOKEN = "sgRenewToken";              //обновить токен авторизации специальной группы
 
   //логи для вызова методов
   inline constexpr absl::string_view LOG_CALL_ADD_STREAM = "API call $0: streamId = $1;  url = $2;  callback = $3";
   inline constexpr absl::string_view LOG_CALL_MOTION_DETECTION = "API call $0: streamId = $1;  isStart = $2";
   inline constexpr absl::string_view LOG_CALL_DOOR_IS_OPEN = "API call $0: streamId = $1";
   inline constexpr absl::string_view LOG_CALL_BEST_QUALITY = "API call $0: eventId = $1;  streamId = $2;  date = $3;  uuid = $4";
-  inline constexpr absl::string_view LOG_CALL_REGISTER_FACE =  "API call $0: streamId = $1;  url = $2;  face = [$3, $4, $5, $6]";
+  inline constexpr absl::string_view LOG_CALL_REGISTER_FACE = "API call $0: streamId = $1;  url = $2;  face = [$3, $4, $5, $6]";
   inline constexpr absl::string_view LOG_CALL_ADD_OR_REMOVE_FACES = "API call $0: streamId = $1;  faceIds = [$2]";
   inline constexpr absl::string_view LOG_CALL_SIMPLE_METHOD = "API call $0";
   inline constexpr absl::string_view LOG_CALL_REMOVE_STREAM = "API call $0: streamId = $1";
@@ -961,12 +940,12 @@ namespace API
   inline constexpr absl::string_view LOG_CALL_UPDATE_SPECIAL_GROUP = "API call $0: id_sgroup = $1;  groupName = $2;  maxDescriptorCount = $3";
   inline constexpr absl::string_view LOG_CALL_PROCESS_FRAME = "API call $0: streamId = $1;  groupId = $2;  url = $3";
   inline constexpr absl::string_view LOG_CALL_SG_SIMPLE_METHOD = "API call $0: id_sgroup = $1";
-  inline constexpr absl::string_view LOG_CALL_SG_REGISTER_FACE =  "API call $0: id_sgroup = $1;  url = $2;  face = [$3, $4, $5, $6]";
+  inline constexpr absl::string_view LOG_CALL_SG_REGISTER_FACE = "API call $0: id_sgroup = $1;  url = $2;  face = [$3, $4, $5, $6]";
   inline constexpr absl::string_view LOG_CALL_SG_DELETE_FACES = "API call $0: id_sgroup = $1;  faceIds = [$2]";
   inline constexpr absl::string_view LOG_CALL_SG_UPDATE_GROUP = "API call $0: id_sgroup = $1;  callback = $2";
 
   //для теста
-  inline constexpr absl::string_view TEST_IMAGE = "testImage";  //протестировать изображение
+  inline constexpr absl::string_view TEST_IMAGE = "testImage";        //протестировать изображение
   inline constexpr absl::string_view TEST_CALLBACK = "testCallback";  //протестировать callback
 
   //для переноса дескрипторов используем виртуальный видео поток, который не показываем в методе listStreams
@@ -1008,21 +987,43 @@ namespace API
   constexpr const char* P_GROUP_ID = "groupId";
   constexpr const char* P_SG_API_TOKEN = "accessApiToken";
   constexpr const char* P_SG_ID = "groupId";
-}
+}  // namespace API
 
 class ApiService : public crow::SimpleApp
 {
 public:
-  static void handleRequest(const crow::request& request, crow::response& response, const String& api_method);
-  static void handleSGroupRequest(const crow::request& request, crow::response& response, const String& api_method_sgroup);
+  // clang-format off
+  const HashMap<int, const char*> RESPONSE_RESULT =
+  {
+    {API::CODE_SUCCESS, "OK"},
+    {API::CODE_NO_CONTENT, "No Content"},
+    {API::CODE_ERROR, "Bad Request"},
+    {API::CODE_UNAUTHORIZED, "Unauthorized"},
+    {API::CODE_FORBIDDEN, "Forbidden"},
+    {API::CODE_SERVER_ERROR, "Internal Server Error"}
+  };
+
+  const HashMap<int, const char*> RESPONSE_MESSAGE =
+  {
+    {API::CODE_SUCCESS, API::MSG_DONE},
+    {API::CODE_NO_CONTENT, "нет содержимого"},
+    {API::CODE_ERROR, "некорректный запрос"},
+    {API::CODE_UNAUTHORIZED, "не авторизован"},
+    {API::CODE_FORBIDDEN, "запрещено"},
+    {API::CODE_SERVER_ERROR, API::MSG_SERVER_ERROR}
+  };
+  // clang-format on
+
+  void handleRequest(const crow::request& request, crow::response& response, const String& api_method);
+  void handleSGroupRequest(const crow::request& request, crow::response& response, const String& api_method_sgroup);
   virtual ~ApiService();
 
 private:
-  static bool checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param);
-  static void simpleResponse(int code, crow::response& response);
-  static void simpleResponse(int code, const String& msg, crow::response& response);
+  bool checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param);
+  void simpleResponse(int code, crow::response& response);
+  void simpleResponse(int code, const String& msg, crow::response& response);
 
-  //api функции
+  // api функции
   static bool addVStream(const String& vstream_ext, const String& url, const String& callback_url, const std::vector<int>& face_ids,
     const HashMap<String, String>& params);
   static void motionDetection(const String& vstream_ext, bool is_start, bool is_door_open = false);

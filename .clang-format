@@ -1,0 +1,33 @@
+﻿---
+BasedOnStyle: Microsoft
+AccessModifierOffset: '-2'
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterCaseLabel: true
+    AfterClass: true
+    AfterControlStatement: Always
+    AfterEnum: true
+    AfterFunction: true
+    AfterNamespace: true
+    AfterStruct: true
+    AfterUnion: true
+    AfterExternBlock: true
+    BeforeCatch: false
+    BeforeElse: false
+    BeforeLambdaBody: true
+    BeforeWhile: false
+AlignAfterOpenBracket: DontAlign
+AlignOperands: Align
+AllowShortLambdasOnASingleLine: Inline
+ColumnLimit: '0'
+ConstructorInitializerIndentWidth: '2'
+ContinuationIndentWidth: '2'
+IndentWidth: '2'
+MaxEmptyLinesToKeep: '2'
+NamespaceIndentation: All
+PointerAlignment: Left
+SpacesBeforeTrailingComments: '2'
+TabWidth: '2'
+UseTab: Never
+...

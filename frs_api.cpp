@@ -1,13 +1,14 @@
 #include "frs_api.h"
-#include "tasks.h"
 #include "absl/strings/escaping.h"
+#include "singleton.h"
+#include "tasks.h"
 
 #include "crow/json.h"
 
+#include <algorithm>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-
 
 using namespace std;
 
@@ -22,7 +23,7 @@ namespace
       try
       {
         return static_cast<int>(v[key]);
-      } catch(...)
+      } catch (...)
       {
         //ничего не делаем
       }
@@ -39,7 +40,7 @@ namespace
       try
       {
         return static_cast<int>(v);
-      } catch(...)
+      } catch (...)
       {
         //ничего не делаем
       }
@@ -53,12 +54,12 @@ namespace
       return {};
 
     if (v[key].t() == crow::json::type::String || v[key].t() == crow::json::type::True || v[key].t() == crow::json::type::False
-      || v[key].t() == crow::json::type::Number)
+        || v[key].t() == crow::json::type::Number)
       return string(v[key]);
     else
       return {};
   }
-}
+}  // namespace
 
 ApiService::~ApiService()
 {
@@ -85,7 +86,7 @@ bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response&
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
     response.code = code;
     response.body = json_error.dump();
@@ -96,7 +97,7 @@ bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response&
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_MISSING_PARAMETER, input_param);
     response.code = code;
     response.body = json_error.dump();
@@ -107,7 +108,7 @@ bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response&
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_NULL_PARAMETER, input_param);
     response.code = code;
     response.body = json_error.dump();
@@ -126,7 +127,7 @@ bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response&
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = absl::Substitute(API::ERROR_EMPTY_VALUE, input_param);
     response.code = code;
     response.body = json_error.dump();
@@ -145,8 +146,8 @@ void ApiService::simpleResponse(int code, const String& msg, crow::response& res
 {
   crow::json::wvalue json_response;
   json_response[API::P_CODE] = code;
-  json_response[API::P_NAME] = API::RESPONSE_RESULT.at(code);
-  json_response[API::P_MESSAGE] = msg.empty() ? API::RESPONSE_MESSAGE.at(code) : msg;
+  json_response[API::P_NAME] = RESPONSE_RESULT.at(code);
+  json_response[API::P_MESSAGE] = msg.empty() ? RESPONSE_MESSAGE.at(code) : msg;
   response.code = code;
   response.body = json_response.dump();
 }
@@ -167,7 +168,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
     response.code = code;
     response.body = json_error.dump();
@@ -191,7 +192,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       crow::json::wvalue json_error;
       int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
       json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_FACE_IDS);
       response.code = code;
       response.body = json_error.dump();
@@ -212,7 +213,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       crow::json::wvalue json_error;
       int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
       json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
       response.code = code;
       response.body = json_error.dump();
@@ -247,7 +248,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       crow::json::wvalue json_error;
       int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
       json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
       response.code = code;
       response.body = json_error.dump();
@@ -343,12 +344,15 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       auto mysql_session = singleton.sql_client->getSession();
       String sql_query = (id_log == 0) ? SQL_GET_LOG_FACE_BEST_QUALITY : SQL_GET_LOG_FACE_BY_ID;
       auto statement = mysql_session.sql(sql_query);
-      auto result = ((id_log == 0) ? statement
-        .bind(id_vstream)
-        .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
-        .bind(interval_before)
-        .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
-        .bind(interval_after) : statement.bind(id_log)).execute();
+      auto result =
+        ((id_log == 0) ? statement
+                           .bind(id_vstream)
+                           .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
+                           .bind(interval_before)
+                           .bind(absl::FormatTime(API::DATETIME_FORMAT, log_date, absl::LocalTimeZone()))
+                           .bind(interval_after)
+                       : statement.bind(id_log))
+          .execute();
       auto row = result.fetchOne();
       if (row)
       {
@@ -369,10 +373,9 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
         int code = API::CODE_SUCCESS;
         crow::json::wvalue json_response{
           {API::P_CODE, code},
-          {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+          {API::P_NAME, RESPONSE_RESULT.at(code)},
           {API::P_MESSAGE, API::MSG_DONE},
-          {API::P_DATA, json_data}
-        };
+          {API::P_DATA, json_data}};
         response.code = code;
         response.body = json_response.dump();
 
@@ -467,7 +470,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     singleton.addLog(absl::Substitute(API::LOG_CALL_REGISTER_FACE, API::REGISTER_FACE, vstream_ext, url,
       face_left, face_top, face_width, face_height));
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
 
@@ -511,22 +514,20 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       json_data[API::P_FACE_WIDTH] = rd->face_width;
       json_data[API::P_FACE_HEIGHT] = rd->face_height;
       json_data[API::P_FACE_IMAGE] = absl::Substitute("data:$0;base64,$1", mime_type,
-        absl::Base64Escape(String((const char *)(buff_.data()), buff_.size())));
+        absl::Base64Escape(String((const char*)(buff_.data()), buff_.size())));
 
       json_response = {
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, json_data}
-      };
+        {API::P_DATA, json_data}};
     } else
     {
       code = API::CODE_ERROR;
       json_response = {
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-        {API::P_MESSAGE, rd->comments}
-      };
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, rd->comments}};
     }
 
     response.code = code;
@@ -576,9 +577,10 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto r_vstreams = mysql_session.sql(SQL_GET_VIDEO_STREAMS)
-        .bind(singleton.id_worker)
-        .execute();
+      auto r_vstreams =
+        mysql_session.sql(SQL_GET_VIDEO_STREAMS)
+          .bind(singleton.id_worker)
+          .execute();
       auto statement_link_descriptor_vstream = mysql_session.sql(SQL_GET_LINKS_DESCRIPTOR_VSTREAM_BY_ID);
       for (auto row_vstream : r_vstreams.fetchAll())
       {
@@ -589,10 +591,11 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
           crow::json::wvalue data;
           data[API::P_STREAM_ID] = vstream_ext;
 
-          auto r_link_descriptor_vstream = statement_link_descriptor_vstream
-            .bind(singleton.id_worker)
-            .bind(id_vstream)
-            .execute();
+          auto r_link_descriptor_vstream =
+            statement_link_descriptor_vstream
+              .bind(singleton.id_worker)
+              .bind(id_vstream)
+              .execute();
           vector<int> faces;
           for (auto row_link_descriptor_vstream : r_link_descriptor_vstream)
           {
@@ -616,10 +619,9 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, json_data}
-      };
+        {API::P_DATA, json_data}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -655,7 +657,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     auto url = jsonString(json, API::P_URL);
     singleton.addLog(absl::Substitute(API::LOG_TEST_IMAGE, API::TEST_IMAGE, vstream_ext, url));
 
-    //scope for lick mutex
+    // scope for lick mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -702,9 +704,8 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-        {API::P_DATA, json_data}
-      };
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
+        {API::P_DATA, json_data}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -764,7 +765,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     auto vstream_ext = jsonString(json, API::P_STREAM_ID);
     int id_vstream = 0;
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
       auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -774,18 +775,19 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
         return;
     }
 
-    singleton.addLog(absl::Substitute(API::LOG_CALL_GET_EVENTS,API::GET_EVENTS, vstream_ext,
+    singleton.addLog(absl::Substitute(API::LOG_CALL_GET_EVENTS, API::GET_EVENTS, vstream_ext,
       jsonString(json, API::P_DATE_START), jsonString(json, API::P_DATE_END)));
 
     crow::json::wvalue::list json_data;
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_GET_LOG_FACES_FROM_INTERVAL)
-        .bind(id_vstream)
-        .bind(absl::FormatTime(API::DATETIME_FORMAT, date_start, absl::LocalTimeZone()))
-        .bind(absl::FormatTime(API::DATETIME_FORMAT, date_end, absl::LocalTimeZone()))
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_GET_LOG_FACES_FROM_INTERVAL)
+          .bind(id_vstream)
+          .bind(absl::FormatTime(API::DATETIME_FORMAT, date_start, absl::LocalTimeZone()))
+          .bind(absl::FormatTime(API::DATETIME_FORMAT, date_end, absl::LocalTimeZone()))
+          .execute();
       for (auto row : result.fetchAll())
       {
         String log_date = row[0].get<std::string>();
@@ -823,10 +825,9 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, json_data}
-      };
+        {API::P_DATA, json_data}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -846,7 +847,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
         crow::json::wvalue json_error;
         int code = API::CODE_ERROR;
         json_error[API::P_CODE] = code;
-        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
         json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
         response.code = code;
         response.body = json_error.dump();
@@ -861,7 +862,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
 
     crow::json::wvalue::list json_data;
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
 
@@ -952,10 +953,9 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, json_data}
-      };
+        {API::P_DATA, json_data}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -976,7 +976,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       crow::json::wvalue json_error;
       int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
       json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
       response.code = code;
       response.body = json_error.dump();
@@ -1008,7 +1008,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       crow::json::wvalue json_error;
       int code = API::CODE_ERROR;
       json_error[API::P_CODE] = code;
-      json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+      json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
       json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_PARAMS);
       response.code = code;
       response.body = json_error.dump();
@@ -1042,17 +1042,17 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
-        .bind(group_name)
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
+          .bind(group_name)
+          .execute();
       if (result.fetchOne())
       {
         int code = API::CODE_ERROR;
         crow::json::wvalue json_error{
           {API::P_CODE, code},
-          {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-          {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}
-        };
+          {API::P_NAME, RESPONSE_RESULT.at(code)},
+          {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}};
         response.code = code;
         response.body = json_error.dump();
         return;
@@ -1075,16 +1075,11 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     int code = API::CODE_SUCCESS;
     crow::json::wvalue json_response{
       {API::P_CODE, code},
-      {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+      {API::P_NAME, RESPONSE_RESULT.at(code)},
       {API::P_MESSAGE, API::MSG_DONE},
-      {
-        API::P_DATA,
-        {
-          {API::P_GROUP_ID, id_sgroup},
-          {API::P_SG_API_TOKEN, token}
-        }
-      }
-    };
+      {API::P_DATA,
+        {{API::P_GROUP_ID, id_sgroup},
+          {API::P_SG_API_TOKEN, token}}}};
     response.code = code;
     response.body = json_response.dump();
 
@@ -1116,7 +1111,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     }
 
     bool sg_exists = false;
-    //scope for lock mutex
+    // scope for lock mutex
     {
       ReadLocker lock(singleton.mtx_task_config);
 
@@ -1144,9 +1139,10 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       if (group_name.empty())
       {
         //не указано название специальной группы - берем значение из базы
-        auto result = mysql_session.sql(SQL_GET_SGROUP_BY_ID)
-          .bind(id_sgroup)
-          .execute();
+        auto result =
+          mysql_session.sql(SQL_GET_SGROUP_BY_ID)
+            .bind(id_sgroup)
+            .execute();
         auto row = result.fetchOne();
         if (row)
           group_name = row[1].get<std::string>();
@@ -1159,9 +1155,10 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       } else
       {
         //указано новое название специальной группы в запросе - проверяем, что название уникально
-        auto result = mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
-          .bind(group_name)
-          .execute();
+        auto result =
+          mysql_session.sql(SQL_GET_SGROUP_BY_NAME)
+            .bind(group_name)
+            .execute();
         auto row = result.fetchOne();
         if (row)
         {
@@ -1172,9 +1169,8 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
             int code = API::CODE_ERROR;
             crow::json::wvalue json_error{
               {API::P_CODE, code},
-              {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-              {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}
-            };
+              {API::P_NAME, RESPONSE_RESULT.at(code)},
+              {API::P_MESSAGE, absl::Substitute(API::ERROR_SGROUP_ALREADY_EXISTS, API::P_SPECIAL_GROUP_NAME)}};
             response.code = code;
             response.body = json_error.dump();
             return;
@@ -1229,7 +1225,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       return;
     }
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       WriteLocker lock(singleton.mtx_task_config);
 
@@ -1284,7 +1280,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
         crow::json::wvalue json_error;
         int code = API::CODE_ERROR;
         json_error[API::P_CODE] = code;
-        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
         json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_URL);
         response.code = code;
         response.body = json_error.dump();
@@ -1323,16 +1319,14 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
     processFrame(task_data, nullptr, process_result).get();
     if (!process_result->id_descriptors.empty())
     {
-      crow::json::wvalue::list face_ids;
-      for (auto id_descriptor : process_result->id_descriptors)
-        face_ids.push_back(id_descriptor);
+      crow::json::wvalue::list face_ids(process_result->id_descriptors.size());
+      std::copy(process_result->id_descriptors.begin(), process_result->id_descriptors.end(), face_ids.begin());
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, face_ids}
-      };
+        {API::P_DATA, face_ids}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -1351,9 +1345,8 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
   int code = API::CODE_ERROR;
   crow::json::wvalue json_error{
     {API::P_CODE, code},
-    {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}
-  };
+    {API::P_NAME, RESPONSE_RESULT.at(code)},
+    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}};
   response.code = code;
   response.body = json_error.dump();
 }
@@ -1376,7 +1369,7 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
   HashSet<int> id_vstream_descriptors;
   HashMap<int, FaceDescriptor> id_descriptor_to_data;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -1412,9 +1405,10 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_GET_VIDEO_STREAM_BY_EXT)
-        .bind(vstream_ext)
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_GET_VIDEO_STREAM_BY_EXT)
+          .bind(vstream_ext)
+          .execute();
       auto row = result.fetchOne();
       if (row)
       {
@@ -1518,15 +1512,16 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
   {
     mysql_session.startTransaction();
     String sql_query = (id_vstream == 0) ? SQL_ADD_VSTREAM : SQL_UPDATE_VSTREAM;
-    auto result = mysql_session.sql(sql_query)
-      .bind(url)
-      .bind(callback_url)
-      .bind(region_x)
-      .bind(region_y)
-      .bind(region_width)
-      .bind(region_height)
-      .bind(id_vstream == 0 ? mysqlx::Value(vstream_ext) : mysqlx::Value(id_vstream))
-      .execute();
+    auto result =
+      mysql_session.sql(sql_query)
+        .bind(url)
+        .bind(callback_url)
+        .bind(region_x)
+        .bind(region_y)
+        .bind(region_width)
+        .bind(region_height)
+        .bind(id_vstream == 0 ? mysqlx::Value(vstream_ext) : mysqlx::Value(id_vstream))
+        .execute();
 
     if (id_vstream == 0)
       id_vstream = static_cast<int>(result.getAutoIncrementValue());
@@ -1542,7 +1537,7 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
     for (auto& vstream_param : vstream_params)
     {
       //для теста
-      //cout << String("__set vstream param %1, %2, %3\n").arg(id_vstream).arg(it.key(), it.value().value.toString()).toStdString();
+      // cout << String("__set vstream param %1, %2, %3\n").arg(id_vstream).arg(it.key(), it.value().value.toString()).toStdString();
 
       statement
         .bind(id_vstream)
@@ -1558,20 +1553,24 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
     for (const auto& id_descriptor : face_ids)
     {
       //для теста
-      //cout << "__descriptor " << id_descriptor;
+      // cout << "__descriptor " << id_descriptor;
 
-      auto row_descriptor = stmt_descriptor.bind(id_descriptor).execute().fetchOne();
+      auto row_descriptor =
+        stmt_descriptor
+          .bind(id_descriptor)
+          .execute()
+          .fetchOne();
       if (row_descriptor)
         if (row_descriptor[0].get<int>() == id_descriptor && id_descriptor > 0)
         {
           //для теста
-          //cout << " found.\n";
+          // cout << " found.\n";
 
           if (!id_vstream_descriptors.contains(id_descriptor))
           {
             FaceDescriptor fd;
             fd.create(1, int(singleton.descriptor_size), CV_32F);
-            auto s = row_descriptor[1].get<std::string >();
+            auto s = row_descriptor[1].get<std::string>();
             std::memcpy(fd.data, s.data(), s.size());
             double norm_l2 = cv::norm(fd, cv::NORM_L2);
             if (norm_l2 <= 0.0)
@@ -1585,9 +1584,9 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
             .bind(id_vstream)
             .execute();
         }
-        //для теста
-        /*else
-          cout << " not found.\n";*/
+      //для теста
+      /*else
+        cout << " not found.\n";*/
     }
 
     mysql_session.commit();
@@ -1598,7 +1597,7 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
     singleton.task_config.conf_id_vstream_to_vstream_ext[id_vstream] = vstream_ext;
@@ -1620,14 +1619,14 @@ bool ApiService::addVStream(const String& vstream_ext, const String& url_new, co
       int id_descriptor = it.first;
 
       //для теста
-      //cout << "__new descriptor for stream: " << id_descriptor << endl;
+      // cout << "__new descriptor for stream: " << id_descriptor << endl;
 
       if (!singleton.id_descriptor_to_data.contains(id_descriptor))
       {
         singleton.id_descriptor_to_data[id_descriptor] = std::move(it.second);
 
         //для теста
-        //cout << "__descriptor loaded from database.\n";
+        // cout << "__descriptor loaded from database.\n";
       }
       singleton.id_vstream_to_id_descriptors[id_vstream].insert(id_descriptor);
       singleton.id_descriptor_to_id_vstreams[id_descriptor].insert(id_vstream);
@@ -1645,12 +1644,12 @@ void ApiService::motionDetection(const String& vstream_ext, bool is_start, bool 
     is_start = false;
   Singleton& singleton = Singleton::instance();
   if (!singleton.is_working.load(std::memory_order_relaxed))
-      return;
+    return;
 
   int id_vstream = 0;
   double conf_open_door_duration = 0.0;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -1668,7 +1667,7 @@ void ApiService::motionDetection(const String& vstream_ext, bool is_start, bool 
   bool do_check_motion_task = false;
   auto now = std::chrono::steady_clock::now();
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     scoped_lock lock(singleton.mtx_capture);
 
@@ -1717,7 +1716,7 @@ bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& fac
 
   int id_vstream = 0;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -1739,10 +1738,11 @@ bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& fac
 
     for (const auto& id_descriptor : face_ids)
     {
-      auto result = stmt_link_descriptor_vstream
-        .bind(id_descriptor)
-        .bind(id_vstream)
-        .execute();
+      auto result =
+        stmt_link_descriptor_vstream
+          .bind(id_descriptor)
+          .bind(id_vstream)
+          .execute();
       if (result.getAffectedItemsCount() > 0)
         id_descriptors.insert(id_descriptor);
     }
@@ -1755,7 +1755,7 @@ bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& fac
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
@@ -1780,12 +1780,13 @@ bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& fac
 
       for (const auto& id_descriptor : id_new_descriptors)
       {
-        auto row = stmt_descriptor.bind(id_descriptor).execute().fetchOne();
+        auto row =
+          stmt_descriptor.bind(id_descriptor).execute().fetchOne();
         if (row)
           if (row[0].get<int>() == id_descriptor && id_descriptor > 0)
           {
             //для теста
-            //cout << "load from db descriptor: " << id_descriptor << endl;
+            // cout << "load from db descriptor: " << id_descriptor << endl;
 
             FaceDescriptor fd;
             fd.create(1, int(singleton.descriptor_size), CV_32F);
@@ -1815,7 +1816,7 @@ bool ApiService::addFaces(const String& vstream_ext, const std::vector<int>& fac
     if (!id_descriptor_to_data.empty())
     {
       WriteLocker lock(singleton.mtx_task_config);
-      for (auto & it : id_descriptor_to_data)
+      for (auto& it : id_descriptor_to_data)
       {
         int id_descriptor = it.first;
         singleton.id_descriptor_to_data[id_descriptor] = std::move(it.second);
@@ -1838,7 +1839,7 @@ bool ApiService::removeFaces(const String& vstream_ext, const std::vector<int>& 
 
   int id_vstream = 0;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -1861,18 +1862,19 @@ bool ApiService::removeFaces(const String& vstream_ext, const std::vector<int>& 
 
     for (const auto& id_descriptor : face_ids)
     {
-      auto result = stat_link_descriptor_vstream
-        .bind(id_descriptor)
-        .bind(id_vstream)
-        .execute();
+      auto result =
+        stat_link_descriptor_vstream
+          .bind(id_descriptor)
+          .bind(id_vstream)
+          .execute();
       if (result.getAffectedItemsCount() > 0)
       {
         id_descriptors.insert(id_descriptor);
         if (!stat_check_link
-          .bind(singleton.id_worker)
-          .bind(id_descriptor)
-          .execute()
-          .fetchOne())
+               .bind(singleton.id_worker)
+               .bind(id_descriptor)
+               .execute()
+               .fetchOne())
           id_descriptors_remove.insert(id_descriptor);
       }
     }
@@ -1885,7 +1887,7 @@ bool ApiService::removeFaces(const String& vstream_ext, const std::vector<int>& 
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
@@ -1925,7 +1927,7 @@ bool ApiService::deleteFaces(const std::vector<int>& face_ids)
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
@@ -1952,7 +1954,7 @@ bool ApiService::removeVStream(const String& vstream_ext)
 
   int id_vstream = 0;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     auto it = singleton.task_config.conf_vstream_ext_to_id_vstream.find(vstream_ext);
@@ -1964,7 +1966,7 @@ bool ApiService::removeVStream(const String& vstream_ext)
     return true;
 
   //для теста
-  //cout << "__id_vstream: " << id_vstream << endl;
+  // cout << "__id_vstream: " << id_vstream << endl;
 
   HashSet<int> id_descriptors_remove;
 
@@ -1972,16 +1974,17 @@ bool ApiService::removeVStream(const String& vstream_ext)
   try
   {
     mysql_session.startTransaction();
-    auto result = mysql_session.sql(SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM)
-      .bind(id_vstream)
-      .bind(id_vstream)
-      .execute();
+    auto result =
+      mysql_session.sql(SQL_GET_SOLE_LINK_DESCRIPTORS_VSTREAM)
+        .bind(id_vstream)
+        .bind(id_vstream)
+        .execute();
     for (auto row : result)
     {
       id_descriptors_remove.insert(row[0]);
 
       //для теста
-      //cout << "__descriptor to remove: " << q_link_descriptor_vstream.value("id_descriptor").toInt() << endl;
+      // cout << "__descriptor to remove: " << q_link_descriptor_vstream.value("id_descriptor").toInt() << endl;
     }
 
     mysql_session.sql(SQL_REMOVE_LINK_WORKER_VSTREAM)
@@ -1997,7 +2000,7 @@ bool ApiService::removeVStream(const String& vstream_ext)
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     scoped_lock lock(singleton.mtx_capture);
     singleton.id_vstream_to_start_motion.erase(id_vstream);
@@ -2005,7 +2008,7 @@ bool ApiService::removeVStream(const String& vstream_ext)
     singleton.is_capturing.erase(id_vstream);
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
@@ -2021,6 +2024,13 @@ bool ApiService::removeVStream(const String& vstream_ext)
     singleton.task_config.conf_vstream_callback_url.erase(id_vstream);
     singleton.task_config.conf_vstream_region.erase(id_vstream);
     singleton.task_config.vstream_conf_params.erase(id_vstream);
+  }
+
+  // scope for lock mutex
+  {
+    //удаляем статистику видео потока
+    WriteLocker lock(singleton.mtx_stats);
+    singleton.dnn_stats_data.erase(id_vstream);
   }
 
   return true;
@@ -2040,11 +2050,12 @@ std::tuple<int, String> ApiService::addSpecialGroup(const String& group_name, in
   try
   {
     auto mysql_session = singleton.sql_client->getSession();
-    auto result = mysql_session.sql(SQL_ADD_SPECIAL_GROUP)
-      .bind(group_name)
-      .bind(token)
-      .bind(max_descriptor_count)
-      .execute();
+    auto result =
+      mysql_session.sql(SQL_ADD_SPECIAL_GROUP)
+        .bind(group_name)
+        .bind(token)
+        .bind(max_descriptor_count)
+        .execute();
     id_sgroup = static_cast<int>(result.getAutoIncrementValue());
   } catch (const mysqlx::Error& err)
   {
@@ -2053,7 +2064,7 @@ std::tuple<int, String> ApiService::addSpecialGroup(const String& group_name, in
     return {};
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
     singleton.task_config.conf_token_to_sgroup[token] = id_sgroup;
@@ -2073,11 +2084,12 @@ bool ApiService::updateSpecialGroup(int id_sgroup, const String& group_name, int
   {
     auto mysql_session = singleton.sql_client->getSession();
 
-    auto result = mysql_session.sql(SQL_UPDATE_SPECIAL_GROUP)
-      .bind(group_name)
-      .bind(max_descriptor_count)
-      .bind(id_sgroup)
-      .execute();
+    auto result =
+      mysql_session.sql(SQL_UPDATE_SPECIAL_GROUP)
+        .bind(group_name)
+        .bind(max_descriptor_count)
+        .bind(id_sgroup)
+        .execute();
   } catch (const mysqlx::Error& err)
   {
     singleton.addLog(absl::Substitute(ERROR_SQL_EXEC_IN_FUNCTION, "SQL_UPDATE_SPECIAL_GROUP", __FUNCTION__));
@@ -2085,7 +2097,7 @@ bool ApiService::updateSpecialGroup(int id_sgroup, const String& group_name, int
     return {};
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
     singleton.task_config.conf_sgroup_max_descriptor_count[id_sgroup] = max_descriptor_count;
@@ -2112,7 +2124,7 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
   int conf_max_descriptor_count = TaskConfig::DEFAULT_SG_MAX_DESCRIPTOR_COUNT;
   int current_descriptor_count{};
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
 
@@ -2147,7 +2159,7 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
     json_error[API::P_CODE] = code;
-    json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+    json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
     json_error[API::P_MESSAGE] = String(API::ERROR_REQUEST_STRUCTURE);
     response.code = code;
     response.body = json_error.dump();
@@ -2187,7 +2199,7 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
         crow::json::wvalue json_error;
         int code = API::CODE_ERROR;
         json_error[API::P_CODE] = code;
-        json_error[API::P_NAME] = API::RESPONSE_RESULT.at(code);
+        json_error[API::P_NAME] = RESPONSE_RESULT.at(code);
         json_error[API::P_MESSAGE] = absl::Substitute(API::INCORRECT_PARAMETER, API::P_URL);
         response.code = code;
         response.body = json_error.dump();
@@ -2234,22 +2246,20 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
       json_data[API::P_FACE_WIDTH] = rd->face_width;
       json_data[API::P_FACE_HEIGHT] = rd->face_height;
       json_data[API::P_FACE_IMAGE] = absl::Substitute("data:$0;base64,$1", mime_type,
-        absl::Base64Escape(String((const char *)(buff_.data()), buff_.size())));
+        absl::Base64Escape(String((const char*)(buff_.data()), buff_.size())));
 
       json_response = {
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
         {API::P_MESSAGE, API::MSG_DONE},
-        {API::P_DATA, json_data}
-      };
+        {API::P_DATA, json_data}};
     } else
     {
       code = API::CODE_ERROR;
       json_response = {
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-        {API::P_MESSAGE, rd->comments}
-      };
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
+        {API::P_MESSAGE, rd->comments}};
     }
 
     response.code = code;
@@ -2288,17 +2298,16 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_GET_SG_FACE_DESCRIPTORS)
-        .bind(id_sgroup)
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_GET_SG_FACE_DESCRIPTORS)
+          .bind(id_sgroup)
+          .execute();
       for (auto row : result.fetchAll())
       {
         int id_descriptor = row[0];
         String face_image = row[1].get<std::string>();
-        json_data.push_back({
-          {API::P_FACE_ID, id_descriptor},
-          {API::P_FACE_IMAGE, std::move(face_image)}
-        });
+        json_data.push_back({{API::P_FACE_ID, id_descriptor},
+          {API::P_FACE_IMAGE, std::move(face_image)}});
       }
     } catch (const mysqlx::Error& err)
     {
@@ -2313,9 +2322,8 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
       int code = API::CODE_SUCCESS;
       crow::json::wvalue json_response{
         {API::P_CODE, code},
-        {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-        {API::P_DATA, json_data}
-      };
+        {API::P_NAME, RESPONSE_RESULT.at(code)},
+        {API::P_DATA, json_data}};
       response.code = code;
       response.body = json_response.dump();
     }
@@ -2334,10 +2342,11 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_UPDATE_SGROUP_CALLBACK)
-        .bind(callback_url)
-        .bind(id_sgroup)
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_UPDATE_SGROUP_CALLBACK)
+          .bind(callback_url)
+          .bind(id_sgroup)
+          .execute();
     } catch (const mysqlx::Error& err)
     {
       singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_UPDATE_SGROUP_CALLBACK"));
@@ -2346,7 +2355,7 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
       return;
     }
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       WriteLocker lock(singleton.mtx_task_config);
       singleton.task_config.conf_sgroup_callback_url[id_sgroup] = callback_url;
@@ -2366,10 +2375,11 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
     try
     {
       auto mysql_session = singleton.sql_client->getSession();
-      auto result = mysql_session.sql(SQL_UPDATE_SGROUP_TOKEN)
-        .bind(new_token)
-        .bind(id_sgroup)
-        .execute();
+      auto result =
+        mysql_session.sql(SQL_UPDATE_SGROUP_TOKEN)
+          .bind(new_token)
+          .bind(id_sgroup)
+          .execute();
     } catch (const mysqlx::Error& err)
     {
       singleton.addLog(absl::Substitute(ERROR_SQL_EXEC, "SQL_UPDATE_SGROUP_TOKEN"));
@@ -2378,7 +2388,7 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
       return;
     }
 
-    //scope for lock mutex
+    // scope for lock mutex
     {
       WriteLocker lock(singleton.mtx_task_config);
 
@@ -2398,15 +2408,10 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
     int code = API::CODE_SUCCESS;
     crow::json::wvalue json_response{
       {API::P_CODE, code},
-      {API::P_NAME, API::RESPONSE_RESULT.at(code)},
+      {API::P_NAME, RESPONSE_RESULT.at(code)},
       {API::P_MESSAGE, API::MSG_DONE},
-      {
-        API::P_DATA,
-        {
-          {API::P_SG_API_TOKEN, new_token}
-        }
-      }
-    };
+      {API::P_DATA,
+        {{API::P_SG_API_TOKEN, new_token}}}};
 
     response.code = code;
     response.body = json_response.dump();
@@ -2417,9 +2422,8 @@ void ApiService::handleSGroupRequest(const crow::request& request, crow::respons
   int code = API::CODE_ERROR;
   crow::json::wvalue json_error{
     {API::P_CODE, code},
-    {API::P_NAME, API::RESPONSE_RESULT.at(code)},
-    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}
-  };
+    {API::P_NAME, RESPONSE_RESULT.at(code)},
+    {API::P_MESSAGE, String(API::ERROR_UNKNOWN_API_METHOD)}};
   response.code = code;
   response.body = json_error.dump();
 }
@@ -2438,9 +2442,11 @@ bool ApiService::sgDeleteFaces(int id_sgroup, const std::vector<int>& face_ids)
     auto statement = mysql_session.sql(SQL_REMOVE_SG_FACE_DESCRIPTOR);
     for (const auto& id_descriptor : face_ids)
       if (statement
-      .bind(id_descriptor)
-      .bind(id_sgroup)
-      .execute().getAffectedItemsCount() > 0)
+            .bind(id_descriptor)
+            .bind(id_sgroup)
+            .execute()
+            .getAffectedItemsCount()
+          > 0)
         id_descriptors_remove.emplace_back(id_descriptor);
 
     mysql_session.commit();
@@ -2451,7 +2457,7 @@ bool ApiService::sgDeleteFaces(int id_sgroup, const std::vector<int>& face_ids)
     return false;
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
@@ -2479,7 +2485,7 @@ bool ApiService::setParams(const HashMap<String, String>& params)
   HashMap<String, ConfParam> conf_params;
   std::vector<String> updated_params;
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     ReadLocker lock(singleton.mtx_task_config);
     conf_params = singleton.task_config.conf_params;
@@ -2552,7 +2558,7 @@ bool ApiService::setParams(const HashMap<String, String>& params)
     }
   }
 
-  //scope for lock mutex
+  // scope for lock mutex
   {
     WriteLocker lock(singleton.mtx_task_config);
 
