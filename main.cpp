@@ -169,7 +169,7 @@ int main(int argc, char** argv)
     //для копирования данных события в отдельную директорию
     , {CONF_COPY_EVENT_DATA, {false}}
   };
-  // clang-format-on
+  // clang-format on
 
   vector<String> args;
   for (int i = 0; i < argc; ++i)
@@ -182,6 +182,7 @@ int main(int argc, char** argv)
   auto thread_pool_size = std::thread::hardware_concurrency();
   String api_path;
   int http_port = 9051;
+  int start_delay = 0;
 
   try
   {
@@ -196,9 +197,10 @@ int main(int argc, char** argv)
     singleton.events_path = s_config.get<String>("frs.events_path", singleton.events_path);
     singleton.http_server_screenshot_url = s_config.get<String>("frs.http_server_screenshot_url", singleton.http_server_screenshot_url);
     singleton.http_server_events_url = s_config.get<String>("frs.http_server_events_url", singleton.http_server_events_url);
+    start_delay = s_config.get<int>("frs.start_delay", start_delay);
 
     String sql_host = s_config.get<String>("sql.host", "localhost");
-    int sql_port = s_config.get<int>("sql.port", 3306);
+    int sql_port = s_config.get<int>("sql.port", 33060);
     String sql_db_name = s_config.get<String>("sql.db_name", "test_frs");
     String sql_user_name = s_config.get<String>("sql.user_name", "user_frs");
     String sql_password = s_config.get<String>("sql.password", "");
@@ -215,6 +217,12 @@ int main(int argc, char** argv)
       << e.what() << "\n"
       << "Используйте параметр --frs-config для указания файла с конфигурацией, например:\n/opt/frs/frs --frs-config /opt/frs/sample.config\n";
     return 1;
+  }
+
+  if (start_delay > 0)
+  {
+    singleton.addLog("Пауза перед началом работы...");
+    this_thread::sleep_for(std::chrono::milliseconds(1000 * start_delay));
   }
 
   HashMap<String, String> config;
@@ -246,7 +254,7 @@ int main(int argc, char** argv)
     return 1;
 
   //для теста
-  //singleton.task_config.conf_params[CONF_LOGS_LEVEL].value = LOGS_VERBOSE;
+  // singleton.task_config.conf_params[CONF_LOGS_LEVEL].value = LOGS_VERBOSE;
 
   singleton.face_width = singleton.getConfigParamValue<int>(CONF_DNN_FR_INPUT_WIDTH);
   singleton.face_height = singleton.getConfigParamValue<int>(CONF_DNN_FR_INPUT_HEIGHT);
@@ -444,14 +452,14 @@ int main(int argc, char** argv)
       return request.body;
     });
 
-  CROW_ROUTE(api_service,  "/api/<path>").methods(crow::HTTPMethod::Post)(
+  CROW_ROUTE(api_service, "/api/<path>").methods(crow::HTTPMethod::Post)(
     [&api_service](const crow::request& request, crow::response& response, const std::string& api_method)
     {
       api_service.handleRequest(request, response, api_method);
       response.end();
     });
 
-  CROW_ROUTE(api_service,  "/sgapi/<path>").methods(crow::HTTPMethod::Post)(
+  CROW_ROUTE(api_service, "/sgapi/<path>").methods(crow::HTTPMethod::Post)(
     [&api_service](const crow::request& request, crow::response& response, const std::string& api_method_sgroup)
     {
       api_service.handleSGroupRequest(request, response, api_method_sgroup);

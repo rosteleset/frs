@@ -14,4 +14,4 @@ target_link_libraries(mysqlconncpp_library INTERFACE
 )
 
 get_target_property(MYSQLCONNCPP_INCLUDE_DIR connector INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories (mysqlconncpp_library SYSTEM BEFORE INTERFACE ${MYSQLCONNCPP_INCLUDE_DIR})
+target_include_directories (mysqlconncpp_library SYSTEM BEFORE INTERFACE ${MYSQLCONNCPP_INCLUDE_DIR} ${MYSQLCONNCPP_ROOT_DIR}/common)

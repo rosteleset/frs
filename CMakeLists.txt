@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.8)
 project(frs)
 set(TARGET_NAME "${PROJECT_NAME}")
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a .dll.a)
 set(TRITON_CLIENT_DIR "$ENV{HOME}/triton-client/build/install" CACHE STRING "Директория Triton Client")
+set(WEB_STATIC_DIRECTORY "static/" CACHE STRING "Директория для статичных файлов")
 
 find_package(OpenCV REQUIRED)
 
@@ -13,6 +15,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/contrib)
 
 list(APPEND SOURCE_CORE main.cpp singleton.h singleton.cpp frs_api.h frs_api.cpp tasks.h tasks.cpp)
 add_executable(${TARGET_NAME} ${SOURCE_CORE})
+target_compile_definitions(${TARGET_NAME} PUBLIC CROW_STATIC_DIRECTORY="${WEB_STATIC_DIRECTORY}")
 
 # include directories
 include_directories(${OpenCV_INCLUDE_DIRS} ${TRITON_CLIENT_INCLUDE_DIRS})

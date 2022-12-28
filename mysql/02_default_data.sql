@@ -1,3 +1,16 @@
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+
 -- Параметры в таблице common_settings
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('alpha', '1.0', 'Альфа-коррекция', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('best-quality-interval-after', '2.0', 'Период в секундах после временной точки для поиска лучшего кадра', 1);
@@ -42,7 +55,7 @@ INSERT INTO common_settings (param_name, param_value, param_comments, for_vstrea
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('face-class-confidence', '0.7', 'Порог вероятности определения маски на лице', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('face-confidence', '0.75', 'Порог вероятности определения лица', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('face-enlarge-scale', '1.5', 'Коэффициент расширения прямоугольной области лица для хранения', 1);
-INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('flag-copy-event-data', '1', 'Флаг копирования данных события в отдельную директорию', 0);
+INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('flag-copy-event-data', '0', 'Флаг копирования данных события в отдельную директорию', 0);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('gamma', '1', 'Гамма-коррекция', 1);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('log-faces-live-interval', '12', '"Время жизни" логов из таблицы log_faces (в часах)', 0);
 INSERT INTO common_settings (param_name, param_value, param_comments, for_vstream) VALUES ('logs-level', '1', 'уровень логов: 0 - ошибки; 1 - события; 2 - подробно', 1);
@@ -59,3 +72,12 @@ INSERT INTO common_settings (param_name, param_value, param_comments, for_vstrea
 
 -- Данные в таблице workers
 INSERT INTO workers (id_worker, url) VALUES (1, '');
+
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;

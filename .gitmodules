@@ -1,17 +1,19 @@
 [submodule "contrib/concurrencpp"]
 	path = contrib/concurrencpp
 	url = https://github.com/alexeimenshikh/concurrencpp.git
-	branch = frs
+	branch = v.0.1.5
 [submodule "contrib/cpr"]
 	path = contrib/cpr
 	url = https://github.com/libcpr/cpr.git
+	branch = 1.9.x
 [submodule "contrib/abseil-cpp"]
 	path = contrib/abseil-cpp
 	url = https://github.com/abseil/abseil-cpp.git
-	branch = lts_2021_11_02
+	branch = lts_2022_06_23
 [submodule "contrib/mysql-connector-cpp"]
 	path = contrib/mysql-connector-cpp
 	url = https://github.com/mysql/mysql-connector-cpp.git
+	branch = trunk
 [submodule "contrib/crow"]
 	path = contrib/crow
 	url = https://github.com/alexeimenshikh/Crow.git
