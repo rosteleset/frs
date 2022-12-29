@@ -27,6 +27,7 @@ mkdir -p $FRS_HOST_WORKDIR/model_repository_onnx/genet/1/
 cp $FRS_OPTDIR/plan_source/genet/genet_small_custom_ft.onnx $FRS_HOST_WORKDIR/model_repository_onnx/genet/1/model.onnx
 mkdir -p $FRS_HOST_WORKDIR/model_repository_onnx/scrfd/1/
 cp $FRS_OPTDIR/plan_source/scrfd/scrfd_10g_bnkps.onnx $FRS_HOST_WORKDIR/model_repository_onnx/scrfd/1/model.onnx
+mkdir -p $FRS_HOST_WORKDIR/model_repository_onnx/arcface/1/
 wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm= \
 	$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP' \
 	-O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP" -O $FRS_HOST_WORKDIR/model_repository_onnx/arcface/1/model.onnx && rm -rf /tmp/cookies.txt
