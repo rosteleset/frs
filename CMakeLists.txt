@@ -16,6 +16,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/contrib)
 list(APPEND SOURCE_CORE main.cpp singleton.h singleton.cpp frs_api.h frs_api.cpp tasks.h tasks.cpp)
 add_executable(${TARGET_NAME} ${SOURCE_CORE})
 target_compile_definitions(${TARGET_NAME} PUBLIC CROW_STATIC_DIRECTORY="${WEB_STATIC_DIRECTORY}")
+set_source_files_properties(tasks.cpp PROPERTIES COMPILE_FLAGS -march=native)
 
 # include directories
 include_directories(${OpenCV_INCLUDE_DIRS} ${TRITON_CLIENT_INCLUDE_DIRS})

@@ -11,10 +11,7 @@ Face Recognition System (FRS) - это система распознавания
  * [Установка и настройка FRS](#setup_frs)
      * [Установка драйверов NVIDIA (если используется GPU)](#drivers_gpu)
      * [Установка и сборка зависимостей](#setup_deps)
-         * [Установка Clang и libc++](#setup_clang)
-         * [Сборка CMake](#build_cmake)
-         * [Сборка Boost](#build_boost)
-         * [Сборка OpenCV](#build_opencv)
+         * [Установка Clang](#setup_clang)
          * [Сборка клиентских библиотек NVIDIA Triton™ Inference Server](#build_tis_client)
      * [Сборка FRS](#build_frs)
      * [Установка MySQL сервера](#setup_mysql)
@@ -76,7 +73,7 @@ Face Recognition System (FRS) - это система распознавания
 <a name="setup_frs"/>
 
 ## Установка и настройка FRS
-Ниже описывается установка и настройка программы, если вы решили не использовать Docker. В качестве примера используется свежеустановленная операционная система Ubuntu 20.04. Вы можете пропускать шаги, если требуемые зависимости уже установлены или использовать другие способы по установке пакетов.
+Ниже описывается установка и настройка программы, если вы решили не использовать Docker. В качестве примера используется операционная система Ubuntu 22.04. Вы можете пропускать шаги, если требуемые зависимости уже установлены или использовать другие способы установки пакетов.
 
 <a name="drivers_gpu"/>
 
@@ -97,125 +94,47 @@ $ sudo apt-get -y install cuda-drivers --no-install-recommends
 ### Установка и сборка зависимостей
 ```bash
 $ sudo apt-get update
-$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev
+$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake libopencv-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-system-dev libboost-thread-dev
 ```
 
 <a name="setup_clang"/>
 
-#### Установка Clang и libc++
-Для сборки проекта требуется Clang версии 14 или выше. Установка описана [здесь](https://apt.llvm.org/). Мы воспользуемся предлагаемым автоматическим скриптом:
+#### Установка Clang
+Для сборки проекта требуется Clang версии 14 или выше. Если вы используете Ubuntu 20.04 или ниже, то также необходимо применять libc++ в качестве стандартной C++ библиотеки и за основу брать инструкции из предыдущих версий проекта (1.1.3).
 ```bash
-$ sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
-$ sudo apt-get --yes install libc++-14-dev libc++abi-14-dev libunwind-14-dev
-$ sudo ldconfig
-$ export CC=clang-14
-$ export CXX=clang++-14
-$ export CXXFLAGS=-stdlib=libc++
+$ export LLVM_VERSION=14
+$ export PKG="clang-$LLVM_VERSION lldb-$LLVM_VERSION lld-$LLVM_VERSION clangd-$LLVM_VERSION"
+$ sudo apt-get install --yes $PKG
+$ export CC=clang-$LLVM_VERSION
+$ export CXX=clang++-$LLVM_VERSION
 ```
-**Важно!** Дальнейшая сборка должна идти с корректными значениями переменных окружения *CC*, *CXX*, *CXXFLAGS*. Если планируете использовать дополнительные консоли, то сначала необходимо выполнить команды:
-```bash
-$ export CC=clang-14
-$ export CXX=clang++-14
-$ export CXXFLAGS=-stdlib=libc++
-```
+**Важно!** Дальнейшая сборка должна идти с корректными значениями переменных окружения *CC*, *CXX*. Если планируете использовать дополнительные консоли, то сначала необходимо установить корректные значения указанных переменных.
 
-<a name="build_cmake"/>
-
-#### Сборка CMake
-Если уже установлен CMake версии не ниже 3.17.3 , то этот шаг можно пропустить и дальше вместо *~/cmake-3.23.1/bin/cmake* использовать короткий вариант *cmake*.
-```bash
-$ cd ~
-$ wget https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1.tar.gz
-$ tar -zxvf cmake-3.23.1.tar.gz
-$ cd cmake-3.23.1
-$ ./bootstrap -- -DCMAKE_BUILD_TYPE:STRING=Release
-$ make -j`nproc`
-```
-
-<a name="build_boost"/>
-
-#### Сборка Boost
-```bash
-$ cd ~
-$ wget https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.zip
-$ unzip boost_1_79_0.zip
-$ cd boost_1_79_0/tools/build
-$ ./bootstrap.sh --cxx=clang++-14 --cxxflags=-stdlib=libc++
-$ cd ~/boost_1_79_0
-$ ~/boost_1_79_0/tools/build/b2 --build-dir=./build --with-filesystem --with-program_options --with-system --with-thread --with-date_time toolset=clang-14 variant=release link=static runtime-link=static cxxflags="-std=c++20 -stdlib=libc++" linkflags="-stdlib=libc++" release
-```
-
-<a name="build_opencv"/>
-
-#### Сборка OpenCV
-```bash
-$ cd ~
-$ wget https://github.com/opencv/opencv/archive/4.5.5.zip
-$ unzip 4.5.5.zip
-$ cd opencv-4.5.5 && mkdir build && cd build
-$ ~/cmake-3.23.1/bin/cmake \
--DCMAKE_BUILD_TYPE=Release \
--DCMAKE_CXX_STANDARD=20 \
--DBUILD_SHARED_LIBS=OFF \
--DBUILD_LIST="core,imgcodecs,calib3d,imgproc" \
--DOPENCV_ENABLE_NONFREE=ON \
--DBUILD_PERF_TESTS=OFF \
--DBUILD_TESTS=OFF \
--DBUILD_ZLIB=ON \
--DBUILD_OPENEXR=OFF \
--DBUILD_JPEG=ON \
--DBUILD_OPENJPEG=ON \
--DBUILD_PNG=ON \
--DBUILD_WEBP=ON \
--DBUILD_PACKAGE=OFF \
--DCMAKE_CONFIGURATION_TYPES="Release" \
--DBUILD_JAVA=OFF \
--DBUILD_opencv_python3=OFF \
--DBUILD_opencv_python_bindings_generator=OFF \
--DBUILD_opencv_python_tests=OFF \
--DWITH_FFMPEG=OFF \
--DWITH_GSTREAMER=OFF \
--DWITH_GTK=OFF \
--DWITH_OPENGL=OFF \
--DWITH_1394=OFF \
--DWITH_ADE=OFF \
--DWITH_OPENEXR=OFF \
--DWITH_PROTOBUF=OFF \
--DWITH_QUIRC=OFF \
--DWITH_TIFF=OFF \
--DWITH_V4L=OFF \
--DWITH_VA=OFF \
--DWITH_VA_INTEL=OFF \
--DWITH_VTK=OFF \
--DWITH_OPENCL=OFF \
-..
-$ make -j`nproc`
-```
-
-<a name="build_tis"/>
+<a name="build_tis_client"/>
 
 #### Сборка клиентских библиотек NVIDIA Triton™ Inference Server
 ```bash
 $ cd ~
 $ git clone https://github.com/triton-inference-server/client.git triton-client
 $ cd triton-client
-$ git checkout r22.12
+$ export TRITON_VERSION=22.12
+$ git checkout r$TRITON_VERSION
 $ mkdir build && cd build
-$ ~/cmake-3.23.1/bin/cmake \
--DCMAKE_BUILD_TYPE=Release \
--DCMAKE_CXX_STANDARD=20 \
--DCMAKE_INSTALL_PREFIX:PATH=$HOME/triton-client/build/install \
--DTRITON_ENABLE_CC_HTTP=ON \
--DTRITON_ENABLE_CC_GRPC=OFF \
--DTRITON_ENABLE_PERF_ANALYZER=OFF \
--DTRITON_ENABLE_PYTHON_HTTP=OFF \
--DTRITON_ENABLE_PYTHON_GRPC=OFF \
--DTRITON_ENABLE_GPU=OFF \
--DTRITON_ENABLE_EXAMPLES=OFF \
--DTRITON_ENABLE_TESTS=OFF \
--DTRITON_COMMON_REPO_TAG=r22.12 \
--DTRITON_THIRD_PARTY_REPO_TAG=r22.12 \
-..
+$ cmake \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_STANDARD=20 \
+        -DCMAKE_INSTALL_PREFIX:PATH=~/triton-client/build/install \
+        -DTRITON_ENABLE_CC_HTTP=ON \
+        -DTRITON_ENABLE_CC_GRPC=OFF \
+        -DTRITON_ENABLE_PERF_ANALYZER=OFF \
+        -DTRITON_ENABLE_PYTHON_HTTP=OFF \
+        -DTRITON_ENABLE_PYTHON_GRPC=OFF \
+        -DTRITON_ENABLE_GPU=OFF \
+        -DTRITON_ENABLE_EXAMPLES=OFF \
+        -DTRITON_ENABLE_TESTS=OFF \
+        -DTRITON_COMMON_REPO_TAG=r$TRITON_VERSION \
+        -DTRITON_THIRD_PARTY_REPO_TAG=r$TRITON_VERSION \
+        ..
 $ make cc-clients -j`nproc`
 ```
 
@@ -226,16 +145,9 @@ $ make cc-clients -j`nproc`
 $ cd ~
 $ git clone --recurse-submodules https://github.com/rosteleset/frs.git
 $ cd frs && mkdir build && cd build
-$ ~/cmake-3.23.1/bin/cmake \
+$ cmake \
 -DCMAKE_BUILD_TYPE=Release \
--DBoost_USE_RELEASE_LIBS=ON \
--DBoost_USE_STATIC_LIBS=ON \
--DBoost_USE_STATIC_RUNTIME=ON \
--DBoost_NO_SYSTEM_PATHS=ON \
--DBOOST_INCLUDEDIR:PATH=$HOME/boost_1_79_0 \
--DBOOST_LIBRARYDIR:PATH=$HOME/boost_1_79_0/stage/lib \
--DOpenCV_DIR:PATH=$HOME/opencv-4.5.5/build \
--DTRITON_CLIENT_DIR:PATH=$HOME/triton-client/build/install \
+-DTRITON_CLIENT_DIR:PATH=~/triton-client/build/install \
 -DCURL_ZLIB=OFF \
 ..
 $ make -j`nproc`
@@ -282,13 +194,13 @@ $ mysql -p -u user_frs db_frs < ~/frs/mysql/02_default_data.sql
 Для инференса нейронных сетей FRS использует Triton Inference Server (TIS) от компании NVIDIA. Существуют различные способы установки и применения TIS. В нашем случае мы используем контейнер. Команды для развертывания контейнера взяты [отсюда](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#getting-started).
 ```bash
 $ distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
-      && curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
-      && curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-            sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-$ sudo apt-get update
-$ sudo apt-get install -y nvidia-docker2
-$ sudo systemctl restart docker
+    && curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+    && curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+          sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+          tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+$ apt-get update
+$ apt-get install -y nvidia-docker2
+$ systemctl restart docker
 ```
 Если используется GPU, то для проверки, что CUDA контейнер работает, нужно запустить:
 ```bash
@@ -304,26 +216,25 @@ $ sudo docker pull nvcr.io/nvidia/tritonserver:22.12-py3
 ### Создание TensorRT планов моделей нейронных сетей (если используется GPU)
 В TIS для инференса мы используем TensorRT планы, полученные из моделей нейронных сетей в формате ONNX (Open Neural Network Exchange).  Для создания файлов с TensorRT планами будем использовать контейнер и утилиту **trtexec**:
 ```bash
-$ sudo docker pull nvcr.io/nvidia/tensorrt:22.12-py3
-$ sudo docker run --gpus all -it --rm -v/opt/frs:/frs nvcr.io/nvidia/tensorrt:22.12-py3
+$ sudo docker run --gpus all -it --rm -v/opt/frs:/frs nvcr.io/nvidia/tritonserver:22.12-py3
 ```
 
 Внутри контейнера:
 ```bash
 # scrfd
 $ mkdir -p /frs/model_repository/scrfd/1
-$ trtexec --onnx=/frs/plan_source/scrfd/scrfd_10g_bnkps.onnx --saveEngine=/frs/model_repository/scrfd/1/model.plan --shapes=input.1:1x3x320x320
+$ /usr/src/tensorrt/bin/trtexec --onnx=/frs/plan_source/scrfd/scrfd_10g_bnkps.onnx --saveEngine=/frs/model_repository/scrfd/1/model.plan --shapes=input.1:1x3x320x320
 
 # genet
 $ mkdir -p /frs/model_repository/genet/1
-$ trtexec --onnx=/frs/plan_source/genet/genet_small_custom_ft.onnx --saveEngine=/frs/model_repository/genet/1/model.plan
+$ /usr/src/tensorrt/bin/trtexec --onnx=/frs/plan_source/genet/genet_small_custom_ft.onnx --saveEngine=/frs/model_repository/genet/1/model.plan
 
 # arcface
 $ mkdir -p /frs/model_repository/arcface/1
 $ mkdir -p /frs/plan_source/arcface
 #скачиваем файл glint360k_r50.onnx:
 $ wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP" -O /frs/plan_source/arcface/glint360k_r50.onnx && rm -rf /tmp/cookies.txt
-$ trtexec --onnx=/frs/plan_source/arcface/glint360k_r50.onnx --saveEngine=/frs/model_repository/arcface/1/model.plan --optShapes=input.1:1x3x112x112 --minShapes=input.1:1x3x112x112 --maxShapes=input.1:1x3x112x112
+$ /usr/src/tensorrt/bin/trtexec --onnx=/frs/plan_source/arcface/glint360k_r50.onnx --saveEngine=/frs/model_repository/arcface/1/model.plan --shapes=input.1:1x3x112x112
 ```
 Закрываем контейнер (например, комбинация клавиш Ctrl+D). Делаем пользователя владельцем:
 ```bash
@@ -344,14 +255,14 @@ sudo chown $USER:$USER /opt/frs/model_repository -R
 
 ### Запуск контейнера Triton Inference Server с GPU
 ```bash
-$ sudo docker run --gpus all -d -p8000:8000 -p8001:8001 -p8002:8002 -v/opt/frs/model_repository:/models nvcr.io/nvidia/tritonserver:22.12-py3 sh -c "tritonserver --model-repository=/models"
+$ sudo docker run --gpus all -d --net=host -v /opt/frs/model_repository:/models nvcr.io/nvidia/tritonserver:22.12-py3 sh -c "tritonserver --model-repository=/models"
 ```
 
 <a name="run_cpu"/>
 
 ### Запуск контейнера Triton Inference Server без GPU
 ```bash
-$ sudo docker run -d -p8000:8000 -p8001:8001 -p8002:8002 -v/opt/frs/model_repository_onnx:/models nvcr.io/nvidia/tritonserver:22.12-py3 sh -c "tritonserver --model-repository=/models"
+$ sudo docker run -d --net=host -v /opt/frs/model_repository_onnx:/models nvcr.io/nvidia/tritonserver:22.12-py3 sh -c "tritonserver --model-repository=/models"
 ```
 
 <a name="run_frs"/>

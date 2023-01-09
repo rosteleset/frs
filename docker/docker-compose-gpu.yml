@@ -8,22 +8,19 @@ services:
       MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: $MYSQL_DB
       MYSQL_TCP_PORT: $MYSQL_PORT
-      MYSQLX_TCP_PORT: $MYSQLX_PORT
     command:
       - '--skip-log-bin'
       - '--innodb_flush_log_at_trx_commit=2'
       - '--innodb_flush_log_at_timeout=10'
+      - '--mysqlx-port=$MYSQLX_PORT'
     volumes:
       - mysql-db:/var/lib/mysql
       - $FRS_HOST_WORKDIR/mysql/01_structure.sql:/docker-entrypoint-initdb.d/01_structure.sql
       - $FRS_HOST_WORKDIR/mysql/02_default_data.sql:/docker-entrypoint-initdb.d/02_default_data.sql
+    network_mode: "host"
   triton:
     image: nvcr.io/nvidia/tritonserver:$TRITON_VERSION-py3
     hostname: triton
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
     deploy:
       resources:
         reservations:
@@ -34,16 +31,15 @@ services:
     volumes:
       - $FRS_HOST_WORKDIR/model_repository:/models
     entrypoint: ["tritonserver", "--model-repository=/models"]
+    network_mode: "host"
   frs:
     image: "lanta/frs"
-    ports:
-      - "9051:9051"
     volumes:
       - $FRS_HOST_WORKDIR:/opt/frs
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    network_mode: "host"
     depends_on:
-      - db
-    links:
-      - triton
       - db
 volumes:
   mysql-db:

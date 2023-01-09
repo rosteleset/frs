@@ -16,5 +16,5 @@
 	branch = trunk
 [submodule "contrib/crow"]
 	path = contrib/crow
-	url = https://github.com/alexeimenshikh/Crow.git
+	url = https://github.com/CrowCpp/Crow.git
 	branch = v1.0

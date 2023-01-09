@@ -15,7 +15,7 @@ export TRITON_VERSION
 mkdir -p $FRS_HOST_WORKDIR/mysql/
 
 cp $(pwd)/../mysql/01_structure.sql $FRS_HOST_WORKDIR/mysql/01_structure.sql
-sed 's/localhost:/triton:/g' $(pwd)/../mysql/02_default_data.sql > $FRS_HOST_WORKDIR/mysql/02_default_data.sql
+cp $(pwd)/../mysql/02_default_data.sql $FRS_HOST_WORKDIR/mysql/02_default_data.sql
 
 envsubst \$MYSQL_DB,\$MYSQLX_PORT,\$MYSQL_PASSWORD < frs.config > $FRS_HOST_WORKDIR/frs.config
 envsubst \$FRS_HOST_WORKDIR,\$MYSQL_DB,\$MYSQL_PORT,\$MYSQLX_PORT,\$MYSQL_PASSWORD,\$TRITON_VERSION < docker-compose-cpu.yml > $FRS_HOST_WORKDIR/docker-compose-cpu.yml

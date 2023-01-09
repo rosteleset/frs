@@ -1,23 +1,23 @@
 ### Требования к системе
-В системе должны быть установлены docker и docker-compose 1.28.0+. Все инструкции приведены на примере ОС Ubuntu 20.04.
+В системе должны быть установлены docker и docker-compose 1.28.0+. Все инструкции приведены на примере ОС Ubuntu 22.04.
+
+### Получение исходного кода FRS
+```bash
+cd ~
+git clone --recurse-submodules https://github.com/rosteleset/frs.git
+```
 
 ### Установка драйверов NVIDIA (если используется GPU)
 На хост-сервер необходимо установить драйвера GPU. Можно использовать [описание](https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts) или выпполнить команду:
 ```bash
-$ sudo ./setup_nvidia_drivers.sh
+$ sudo ~/frs/docker/setup_nvidia_drivers.sh
 ```
 Перезагрузить систему.
 
 ### Установка NVIDIA Container Toolkit
 Можно воспользоваться инструкцией [здесь](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#getting-started) или выполнить команду:
 ```bash
-sudo ./setup_nvidia_container_toolkit.sh
-```
-
-### Получение исходного кода FRS
-```bash
-cd ~
-git clone --recurse-submodules https://github.com/rosteleset/frs.git
+sudo ~/frs/docker/setup_nvidia_container_toolkit.sh
 ```
 
 ### Подготовка конфигурации

@@ -5,16 +5,16 @@ FROM ubuntu:22.04 as builder
 LABEL stage=builder
 
 ARG LLVM_VERSION=14
-ARG BOOST_VERSION=1.79.0
-ARG BOOST_SUFFIX=1_79_0
-ARG OPENCV_VERSION=4.5.5
+ARG BOOST_VERSION=1.81.0
+ARG BOOST_SUFFIX=1_81_0
+ARG OPENCV_VERSION=4.7.0
 ARG TRITON_VERSION=22.12
 
 # Установка зависимостей
 RUN apt-get update && apt-get --yes upgrade
 RUN DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
-    apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake
+    apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake nasm
 
 # Установка Clang
 ENV PKG="clang-$LLVM_VERSION lldb-$LLVM_VERSION lld-$LLVM_VERSION clangd-$LLVM_VERSION"

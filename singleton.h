@@ -584,7 +584,6 @@ public:
   std::tuple<int, String, String> addLogFace(int id_vstream, DateTime log_date, int id_descriptor, double quality,
     const cv::Rect& face_rect, const std::string& screenshot) const;
   void addLogDeliveryEvent(DeliveryEventType delivery_type, DeliveryEventResult delivery_result, int id_vstream, int id_descriptor) const;
-  static double cosineDistance(const FaceDescriptor& fd1, const FaceDescriptor& fd2);
   void addPermanentTasks() const;
 
   template <typename T>

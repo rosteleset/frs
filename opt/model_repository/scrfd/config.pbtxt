@@ -1,5 +1,6 @@
 name: "scrfd"
 platform: "tensorrt_plan"
+max_batch_size: 0
 input [
   {
     name: "input.1"

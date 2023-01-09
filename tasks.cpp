@@ -3,6 +3,8 @@
 #include "http_client.h"
 #include "singleton.h"
 
+#include <opencv2/core/simd_intrinsics.hpp>
+
 namespace tc = triton::client;
 using namespace std;
 
@@ -10,6 +12,40 @@ namespace
 {
   constexpr const int HTTP_SUCCESS = 200;
   constexpr const int HTTP_NO_CONTENT = 204;
+
+  double cosineDistance(const FaceDescriptor& fd1, const FaceDescriptor& fd2)
+  {
+    if (fd1.cols != fd2.cols || fd1.cols == 0)
+      return -1.0;
+
+    int step = cv::v_float32().nlanes;
+    cv::v_float32 sum0 = cv::vx_setzero_f32();
+    cv::v_float32 sum1 = cv::vx_setzero_f32();
+    cv::v_float32 sum2 = cv::vx_setzero_f32();
+    cv::v_float32 sum3 = cv::vx_setzero_f32();
+    auto ptr1 = fd1.ptr<float>(0);
+    auto ptr2 = fd2.ptr<float>(0);
+    for (int i = 0; i < fd1.cols; i += 4 * step)
+    {
+      cv::v_float32 v1 = cv::vx_load(ptr1 + i + 0 * step);
+      cv::v_float32 v2 = cv::vx_load(ptr2 + i + 0 * step);
+      sum0 += v1 * v2;
+
+      v1 = cv::vx_load(ptr1 + i + 1 * step);
+      v2 = cv::vx_load(ptr2 + i + 1 * step);
+      sum1 += v1 * v2;
+
+      v1 = cv::vx_load(ptr1 + i + 2 * step);
+      v2 = cv::vx_load(ptr2 + i + 2 * step);
+      sum2 += v1 * v2;
+
+      v1 = cv::vx_load(ptr1 + i + 3 * step);
+      v2 = cv::vx_load(ptr2 + i + 3 * step);
+      sum3 += v1 * v2;
+    }
+    sum0 += sum1 + sum2 + sum3;
+    return v_reduce_sum(sum0);
+  }
 
   // OpenCV port of 'LAPV' algorithm (Pech2000)
   double varianceOfLaplacian(const cv::Mat& src)
@@ -1069,13 +1105,21 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         singleton.addLog(absl::Substitute("Начало обработки кадра для специальной группы: $0", task_data.id_sgroup));
     }
 
-    //для теста
-    // auto tt00 = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point tt00{};
+    if (log_level >= LOGS_VERBOSE)
+      tt00 = std::chrono::steady_clock::now();
 
     //декодирование изображения
     cv::Mat frame = cv::imdecode(std::vector<char>(image_data.begin(), image_data.end()), cv::IMREAD_COLOR);
     if (!image_data.empty())
     {
+      if (log_level >= LOGS_VERBOSE)
+      {
+        auto ttp = std::chrono::steady_clock::now();
+        singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 00 = $1 ms", task_data.id_vstream,
+          std::chrono::duration<double, std::milli>(ttp - tt00).count()));
+      }
+
       if (task_data.task_type == TASK_REGISTER_DESCRIPTOR)
       {
         //если не указана область поиска лица, то ищем по всему изображению
@@ -1088,8 +1132,9 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       vector<FaceDetection> detected_faces;
       DNNStatsData dnn_stats_data;
 
-      //для теста
-      // auto tt0 = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point tt0{};
+      if (log_level >= LOGS_VERBOSE)
+        tt0 = std::chrono::steady_clock::now();
 
       //переключаемся в фоновый режим
       if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1106,9 +1151,15 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       //для сбора статистики инференса
       ++dnn_stats_data.fd_count;
 
-      //для теста
-      // auto tt1 = std::chrono::steady_clock::now();
-      // cout << "__face detection time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+      std::chrono::steady_clock::time_point tt1{};
+      if (log_level >= LOGS_VERBOSE)
+      {
+        tt1 = std::chrono::steady_clock::now();
+        singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, face detection time = $1 ms", task_data.id_vstream,
+          std::chrono::duration<double, std::milli>(tt1 - tt0).count()));
+        singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 01 = $1 ms", task_data.id_vstream,
+          std::chrono::duration<double, std::milli>(tt1 - tt00).count()));
+      }
 
       if (is_ok)
       {
@@ -1144,7 +1195,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             static_cast<int>(detected_face.bbox[2] - detected_face.bbox[0] + 1),
             static_cast<int>(detected_face.bbox[3] - detected_face.bbox[1] + 1));
 
-          face_data.emplace_back(FaceData());
+          face_data.emplace_back();
           face_data.back().face_rect = face_rect;
 
           //проверяем, что лицо полностью находится в рабочей области
@@ -1268,8 +1319,12 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           //получаем дескриптор лица (биометрический шаблон)
           cv::Mat face_descriptor;
 
-          //для теста
-          // tt0 = std::chrono::steady_clock::now();
+          if (log_level >= LOGS_VERBOSE)
+          {
+            tt0 = std::chrono::steady_clock::now();
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 02 = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt0 - tt00).count()));
+          }
 
           //переключаемся в фоновый режим
           if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1290,9 +1345,14 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           //для сбора статистики инференса
           ++dnn_stats_data.fr_count;
 
-          //для теста
-          // tt1 = std::chrono::steady_clock::now();
-          // cout << "__extract face descriptor time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << endl;
+          if (log_level >= LOGS_VERBOSE)
+          {
+            tt1 = std::chrono::steady_clock::now();
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, extract face descriptor time = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt1 - tt0).count()));
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 03 = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt1 - tt00).count()));
+          }
 
           face_data.back().fd = face_descriptor.clone();
           double norm_l2 = cv::norm(face_descriptor, cv::NORM_L2);
@@ -1304,8 +1364,8 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
           double max_cos_distance = -2.0;
           int id_descriptor{};
 
-          //для теста
-          // tt0 = std::chrono::steady_clock::now();
+          if (log_level >= LOGS_VERBOSE)
+            tt0 = std::chrono::steady_clock::now();
 
           // scope for lock mutex
           {
@@ -1315,7 +1375,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
               for (auto it_descriptor = singleton.id_vstream_to_id_descriptors[task_data.id_vstream].cbegin();
                    it_descriptor != singleton.id_vstream_to_id_descriptors[task_data.id_vstream].cend(); ++it_descriptor)
               {
-                double cos_distance = Singleton::cosineDistance(face_descriptor, singleton.id_descriptor_to_data[*it_descriptor]);
+                double cos_distance = cosineDistance(face_descriptor, singleton.id_descriptor_to_data[*it_descriptor]);
                 if (cos_distance > max_cos_distance)
                 {
                   max_cos_distance = cos_distance;
@@ -1330,7 +1390,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
               if (it != singleton.id_sgroup_to_id_descriptors.end())
                 for (auto id_sg_descriptor : it->second)
                 {
-                  double cos_distance = Singleton::cosineDistance(face_descriptor, singleton.id_descriptor_to_data[id_sg_descriptor]);
+                  double cos_distance = cosineDistance(face_descriptor, singleton.id_descriptor_to_data[id_sg_descriptor]);
                   if (cos_distance > max_cos_distance)
                   {
                     max_cos_distance = cos_distance;
@@ -1345,7 +1405,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
                 int id_sg_best_descriptor{};
                 for (auto id_sg_descriptor : sg_descriptors.second)
                 {
-                  double cos_distance = Singleton::cosineDistance(face_descriptor, singleton.id_descriptor_to_data[id_sg_descriptor]);
+                  double cos_distance = cosineDistance(face_descriptor, singleton.id_descriptor_to_data[id_sg_descriptor]);
                   if (cos_distance > sg_max_cos_distance)
                   {
                     sg_max_cos_distance = cos_distance;
@@ -1362,9 +1422,14 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             }
           }
 
-          //для теста
-          // tt1 = std::chrono::steady_clock::now();
-          // cout << "__recognition time: " << std::chrono::duration<double, std::milli>(tt1 - tt0).count() << " ms" << endl;
+          if (log_level >= LOGS_VERBOSE)
+          {
+            tt1 = std::chrono::steady_clock::now();
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, recognition time = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt1 - tt0).count()));
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 04 = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt1 - tt00).count()));
+          }
 
           face_data.back().cosine_distance = max_cos_distance;
 
@@ -1432,8 +1497,13 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         {
           singleton.addLog(absl::Substitute("Обнаружены лица детектором: id_vstream = $0", task_data.id_vstream));
 
-          //для теста
-          // auto tt000 = std::chrono::steady_clock::now();
+          std::chrono::steady_clock::time_point tt000{};
+          if (log_level >= LOGS_VERBOSE)
+          {
+            tt000 = std::chrono::steady_clock::now();
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 05 = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt000 - tt00).count()));
+          }
 
           //переключаемся в фоновый режим
           if (!singleton.is_working.load(std::memory_order_relaxed))
@@ -1481,9 +1551,15 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             co_return;
           co_await concurrencpp::resume_on(singleton.runtime->thread_pool_executor());
 
-          //для теста
-          // auto tt001 = std::chrono::steady_clock::now();
-          // cout << "__write log time: " << std::chrono::duration<double, std::milli>(tt001 - tt000).count() << " ms" << endl;
+          std::chrono::steady_clock::time_point tt001{};
+          if (log_level >= LOGS_VERBOSE)
+          {
+            tt001 = std::chrono::steady_clock::now();
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, write log time = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt001 - tt000).count()));
+            singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, time point 06 = $1 ms", task_data.id_vstream,
+              std::chrono::duration<double, std::milli>(tt001 - tt00).count()));
+          }
         }
 
         //отправляем события о распознавании лиц из специальных групп
@@ -1678,9 +1754,13 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         singleton.addLog(absl::Substitute("Конец захвата кадров с видео потока $0.", task_data.id_vstream));
     }
 
-    //для теста
-    // auto tt01 = std::chrono::steady_clock::now();
-    // cout << "__processFrame time: " << std::chrono::duration<double, std::milli>(tt01 - tt00).count() << " ms\n";
+    std::chrono::steady_clock::time_point tt01{};
+    if (log_level >= LOGS_VERBOSE)
+    {
+      tt01 = std::chrono::steady_clock::now();
+      singleton.addLog(absl::Substitute("processFrame, id_vstream = $0, total time = $1 ms", task_data.id_vstream,
+        std::chrono::duration<double, std::milli>(tt01 - tt00).count()));
+    }
   } catch (const concurrencpp::errors::broken_task& e)
   {
     //ничего не делаем

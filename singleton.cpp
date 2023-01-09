@@ -12,14 +12,6 @@ namespace
   mutex mtx_log;
 }
 
-double Singleton::cosineDistance(const FaceDescriptor& fd1, const FaceDescriptor& fd2)
-{
-  if (fd1.cols != fd2.cols || fd1.cols == 0)
-    return -1.0;
-
-  return fd1.dot(fd2);
-}
-
 Singleton::Singleton()
 {
   std::srand(std::clock());
