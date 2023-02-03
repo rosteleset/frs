@@ -81,7 +81,7 @@ ApiService::~ApiService()
 
 bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param)
 {
-  if (json.error())
+  if (json.error() || json.t() != crow::json::type::Object)
   {
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
