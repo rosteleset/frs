@@ -233,7 +233,7 @@ $ /usr/src/tensorrt/bin/trtexec --onnx=/frs/plan_source/genet/genet_small_custom
 $ mkdir -p /frs/model_repository/arcface/1
 $ mkdir -p /frs/plan_source/arcface
 #скачиваем файл glint360k_r50.onnx:
-$ wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1gnt6P3jaiwfevV4hreWHPu0Mive5VRyP" -O /frs/plan_source/arcface/glint360k_r50.onnx && rm -rf /tmp/cookies.txt
+$ wget --quiet https://nc2.lanta.me/s/HpjwAsoWr2XYek5/download -O /frs/plan_source/arcface/glint360k_r50.onnx
 $ /usr/src/tensorrt/bin/trtexec --onnx=/frs/plan_source/arcface/glint360k_r50.onnx --saveEngine=/frs/model_repository/arcface/1/model.plan --shapes=input.1:1x3x112x112
 ```
 Закрываем контейнер (например, комбинация клавиш Ctrl+D). Делаем пользователя владельцем:
