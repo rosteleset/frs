@@ -1,5 +1,5 @@
 ### Требования к системе
-В системе должны быть установлены docker и docker-compose 1.28.0+. Все инструкции приведены на примере ОС Ubuntu 22.04.
+В системе должны быть установлены docker и docker compose V2. Все инструкции приведены на примере ОС Ubuntu 22.04.
 
 ### Получение исходного кода FRS
 ```bash
@@ -52,9 +52,9 @@ sudo ./build_frs.sh
 ### Запуск FRS
 * С использованием GPU:
 ```bash
-sudo docker-compose -f /opt/frs/docker-compose-gpu.yml up
+sudo docker compose -f /opt/frs/docker-compose-gpu.yml up
 ```
 * Без GPU:
 ```bash
-sudo docker-compose -f /opt/frs/docker-compose-cpu.yml up
+sudo docker compose -f /opt/frs/docker-compose-cpu.yml up
 ```
