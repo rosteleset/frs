@@ -148,6 +148,7 @@ $ cd frs && mkdir build && cd build
 $ cmake \
 -DCMAKE_BUILD_TYPE=Release \
 -DTRITON_CLIENT_DIR:PATH=~/triton-client/build/install \
+-DWEB_STATIC_DIRECTORY:STRING="/opt/frs/static/" \
 -DCURL_ZLIB=OFF \
 ..
 $ make -j`nproc`
