@@ -94,7 +94,7 @@ $ sudo apt-get -y install cuda-drivers --no-install-recommends
 ### Установка и сборка зависимостей
 ```bash
 $ sudo apt-get update
-$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake libopencv-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-system-dev libboost-thread-dev
+$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake libopencv-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-system-dev libboost-thread-dev libturbojpeg-dev
 ```
 
 <a name="setup_clang"/>
@@ -102,7 +102,7 @@ $ sudo apt-get --yes install make lsb-release software-properties-common wget un
 #### Установка Clang
 Для сборки проекта требуется Clang версии 14 или выше. Если вы используете Ubuntu 20.04 или ниже, то также необходимо применять libc++ в качестве стандартной C++ библиотеки и за основу брать инструкции из предыдущих версий проекта (1.1.3).
 ```bash
-$ export LLVM_VERSION=14
+$ export LLVM_VERSION=15
 $ export PKG="clang-$LLVM_VERSION lldb-$LLVM_VERSION lld-$LLVM_VERSION clangd-$LLVM_VERSION"
 $ sudo apt-get install --yes $PKG
 $ export CC=clang-$LLVM_VERSION
@@ -192,7 +192,7 @@ $ mysql -p -u user_frs db_frs < ~/frs/mysql/02_default_data.sql
 <a name="tis"/>
 
 ### NVIDIA Triton™ Inference Server
-Для инференса нейронных сетей FRS использует Triton Inference Server (TIS) от компании NVIDIA. Существуют различные способы установки и применения TIS. В нашем случае мы используем контейнер. Команды для развертывания контейнера взяты [отсюда](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#getting-started).
+Для инференса нейронных сетей FRS использует Triton Inference Server (TIS) от компании NVIDIA. Существуют различные способы установки и применения TIS. В нашем случае мы используем контейнер. Команды для развертывания контейнера взяты [отсюда](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#getting-started). Под пользователем root:
 ```bash
 $ distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
     && curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
@@ -269,11 +269,12 @@ $ sudo docker run -d --net=host -v /opt/frs/model_repository_onnx:/models nvcr.i
 <a name="run_frs"/>
 
 ### Запуск FRS
-Параметры конфигурации с описанием находятся в файле */opt/frs/sample.config*.
+Заполните параметры конфигурации вашими значениями в файле */opt/frs/sample.config*.
 Запуск:
 ```bash
 $ /opt/frs/run_frs
 ```
+Рекомендуем создать systemd сервис для FRS.
 
 <a name="doc_api"/>
 
