@@ -1089,6 +1089,12 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         co_return;
       }
 
+      if (response_image.text.empty())
+      {
+        singleton.addLog(absl::Substitute("Пустой ответ при захвате кадра с видео потока id_vstream = $0", task_data.id_vstream));
+        co_return;
+      }
+
       image_data = std::move(response_image.text);
 
       //переключаемся в основной режим
