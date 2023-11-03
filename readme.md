@@ -94,7 +94,7 @@ $ sudo apt-get -y install cuda-drivers --no-install-recommends
 ### Установка и сборка зависимостей
 ```bash
 $ sudo apt-get update
-$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake libopencv-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-system-dev libboost-thread-dev libturbojpeg-dev
+$ sudo apt-get --yes install make lsb-release software-properties-common wget unzip git libssl-dev rapidjson-dev libz-dev cmake libopencv-dev libboost-filesystem-dev libboost-program-options-dev libboost-date-time-dev libboost-system-dev libboost-thread-dev
 ```
 
 <a name="setup_clang"/>
