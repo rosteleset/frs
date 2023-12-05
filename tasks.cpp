@@ -1063,12 +1063,16 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
       cpr::SslOptions ssl_opts = cpr::Ssl(cpr::ssl::VerifyHost{false}, cpr::ssl::VerifyPeer{false},
         cpr::ssl::VerifyStatus{false}, cpr::ssl::Ciphers{"DEFAULT@SECLEVEL=1"});
       cpr::Response response_image = cpr::Get(cpr::Url{url}, cpr::Timeout(request_timeout_ms), ssl_opts);
-      if (response_image.status_code != HTTP_SUCCESS)
+      if (response_image.status_code != HTTP_SUCCESS || response_image.text.empty())
       {
         if (task_data.task_type == TASK_RECOGNIZE)
         {
-          singleton.addLog(absl::Substitute("Ошибка при захвате кадра с видео потока id_vstream = $0: $1",
-            task_data.id_vstream, response_image.status_line));
+          if (response_image.status_code == HTTP_SUCCESS)
+            singleton.addLog(
+              absl::Substitute("Пустой ответ при захвате кадра с видео потока id_vstream = $0", task_data.id_vstream));
+          else
+            singleton.addLog(absl::Substitute("Ошибка при захвате кадра с видео потока id_vstream = $0: $1",
+              task_data.id_vstream, response_image.status_line));
           if (task_data.error_count < max_capture_error_count)
           {
             ++task_data.error_count;
@@ -1086,12 +1090,6 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
         } else
           singleton.addLog(absl::Substitute("Ошибка при получении кадра по URL $0: $1", url, response_image.status_line));
 
-        co_return;
-      }
-
-      if (response_image.text.empty())
-      {
-        singleton.addLog(absl::Substitute("Пустой ответ при захвате кадра с видео потока id_vstream = $0", task_data.id_vstream));
         co_return;
       }
 
@@ -1527,7 +1525,7 @@ concurrencpp::result<void> processFrame(TaskData task_data, std::shared_ptr<Regi
             {
               crow::json::wvalue json_data;
               json_data[API::P_FACE_ID] = face_data[best_face_index].id_descriptor;
-              json_data[API::P_LOG_FACES_ID] = id_log;
+              json_data[API::P_LOG_EVENT_ID] = id_log;
               cpr::SslOptions ssl_opts = cpr::Ssl(cpr::ssl::VerifyHost{false}, cpr::ssl::VerifyPeer{false},
                 cpr::ssl::VerifyStatus{false});
               cpr::Response response_callback = cpr::Post(cpr::Url{conf_callback_url},

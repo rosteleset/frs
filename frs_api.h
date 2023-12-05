@@ -963,7 +963,7 @@ namespace API
   constexpr const char* P_CALLBACK_URL = "callback";
   constexpr const char* P_START = "start";
   constexpr const char* P_DATE = "date";
-  constexpr const char* P_LOG_FACES_ID = "eventId";
+  constexpr const char* P_LOG_EVENT_ID = "eventId";
   constexpr const char* P_EVENT_UUID = "uuid";
   constexpr const char* P_SCREENSHOT = "screenshot";
   constexpr const char* P_FACE_LEFT = "left";

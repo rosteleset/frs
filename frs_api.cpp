@@ -16,6 +16,9 @@ namespace
 {
   int jsonInteger(const crow::json::rvalue& v, const string& key)
   {
+    if (v.t() == crow::json::type::List)
+      return {};
+
     if (!v.has(key))
       return {};
 
@@ -50,6 +53,9 @@ namespace
 
   String jsonString(const crow::json::rvalue& v, const string& key)
   {
+    if (v.t() == crow::json::type::List)
+      return {};
+
     if (!v.has(key))
       return {};
 
@@ -81,7 +87,7 @@ ApiService::~ApiService()
 
 bool ApiService::checkInputParam(const crow::json::rvalue& json, crow::response& response, const char* input_param)
 {
-  if (json.error() || json.t() != crow::json::type::Object)
+  if (json.error())
   {
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
@@ -163,7 +169,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
 
   //проверка корректности структуры тела запроса (JSON)
   auto json = crow::json::load(request.body);
-  if (!request.body.empty() && json.error())
+  if (!request.body.empty() && (json.error() || json.t() != crow::json::type::Object))
   {
     crow::json::wvalue json_error;
     int code = API::CODE_ERROR;
@@ -296,15 +302,15 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
 
   if (api_function == absl::AsciiStrToLower(API::BEST_QUALITY))
   {
-    if (!json.has(API::P_LOG_FACES_ID) && (!json.has(API::P_STREAM_ID) || !json.has(API::P_DATE)))
+    if (!json.has(API::P_LOG_EVENT_ID) && (!json.has(API::P_STREAM_ID) || !json.has(API::P_DATE)))
       return;
 
     String vstream_ext = jsonString(json, API::P_STREAM_ID);
     int id_vstream = 0;
 
     int id_log = 0;
-    if (json.has(API::P_LOG_FACES_ID))
-      id_log = jsonInteger(json, API::P_LOG_FACES_ID);
+    if (json.has(API::P_LOG_EVENT_ID))
+      id_log = jsonInteger(json, API::P_LOG_EVENT_ID);
 
     DateTime log_date;
     bool is_valid = absl::ParseTime(API::DATETIME_FORMAT, jsonString(json, API::P_DATE), absl::LocalTimeZone(), &log_date, nullptr);
@@ -689,7 +695,7 @@ void ApiService::handleRequest(const crow::request& request, crow::response& res
       for (auto row : result.fetchAll())
       {
         int id_descriptor = row[0];
-        json_data.push_back(id_descriptor);
+        json_data.emplace_back(id_descriptor);
       }
     } catch (const mysqlx::Error& err)
     {
