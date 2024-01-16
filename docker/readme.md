@@ -52,9 +52,9 @@ sudo ./build_frs.sh
 ### Запуск FRS
 * С использованием GPU:
 ```bash
-sudo docker compose -f /opt/frs/docker-compose-gpu.yml up
+sudo docker compose -f /opt/frs/docker-compose-gpu.yml up -d
 ```
 * Без GPU:
 ```bash
-sudo docker compose -f /opt/frs/docker-compose-cpu.yml up
+sudo docker compose -f /opt/frs/docker-compose-cpu.yml up -d
 ```

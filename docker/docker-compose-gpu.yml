@@ -18,6 +18,7 @@ services:
       - $FRS_HOST_WORKDIR/mysql/01_structure.sql:/docker-entrypoint-initdb.d/01_structure.sql
       - $FRS_HOST_WORKDIR/mysql/02_default_data.sql:/docker-entrypoint-initdb.d/02_default_data.sql
     network_mode: "host"
+    restart: unless-stopped
   triton:
     image: nvcr.io/nvidia/tritonserver:$TRITON_VERSION-py3
     hostname: triton
@@ -32,6 +33,7 @@ services:
       - $FRS_HOST_WORKDIR/model_repository:/models
     entrypoint: ["tritonserver", "--model-repository=/models"]
     network_mode: "host"
+    restart: unless-stopped
   frs:
     image: "lanta/frs"
     volumes:
@@ -41,5 +43,6 @@ services:
     network_mode: "host"
     depends_on:
       - db
+    restart: unless-stopped
 volumes:
   mysql-db:
